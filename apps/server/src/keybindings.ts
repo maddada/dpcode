@@ -89,6 +89,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+alt+c", command: "chat.newClaude", when: "!terminalFocus" },
   { key: "mod+alt+x", command: "chat.newCodex", when: "!terminalFocus" },
   { key: "mod+\\", command: "chat.split", when: "!terminalFocus" },
+  { key: "mod+shift+e", command: "chat.openProjectEditor", when: "!terminalFocus" },
+  { key: "mod+alt+t", command: "chat.openProjectTerminal", when: "!terminalFocus" },
   { key: "mod+shift+]", command: "chat.visible.next", when: "!terminalFocus" },
   { key: "mod+shift+[", command: "chat.visible.previous", when: "!terminalFocus" },
   { key: "mod+o", command: "editor.openFavorite" },

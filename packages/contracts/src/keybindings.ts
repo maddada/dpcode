@@ -30,6 +30,8 @@ const STATIC_KEYBINDING_COMMANDS = [
   "chat.newClaude",
   "chat.newCodex",
   "chat.split",
+  "chat.openProjectEditor",
+  "chat.openProjectTerminal",
   "chat.visible.next",
   "chat.visible.previous",
   "editor.openFavorite",

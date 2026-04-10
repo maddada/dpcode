@@ -85,6 +85,7 @@ import { makeServerPushBus } from "./wsServer/pushBus.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@t3tools/shared/schemaJson";
 import { workspaceRootsEqual } from "@t3tools/shared/threadWorkspace";
+import { ProjectEditorRuntimeManager } from "./projectEditorRuntime";
 import { TerminalThreadTitleTracker } from "./terminal/terminalThreadTitleTracker";
 
 /**
@@ -143,8 +144,16 @@ const parseManagedWorktreeWorkspaceRoot = (input: {
 };
 
 function rejectUpgrade(socket: Duplex, statusCode: number, message: string): void {
+  const reasonPhrase =
+    statusCode === 401
+      ? "Unauthorized"
+      : statusCode === 404
+        ? "Not Found"
+        : statusCode === 502
+          ? "Bad Gateway"
+          : "Bad Request";
   socket.end(
-    `HTTP/1.1 ${statusCode} ${statusCode === 401 ? "Unauthorized" : "Bad Request"}\r\n` +
+    `HTTP/1.1 ${statusCode} ${reasonPhrase}\r\n` +
       "Connection: close\r\n" +
       "Content-Type: text/plain\r\n" +
       `Content-Length: ${Buffer.byteLength(message)}\r\n` +
@@ -402,6 +411,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     autoBootstrapProjectFromCwd,
   } = serverConfig;
   const availableEditors = resolveAvailableEditors();
+  const projectEditorRuntimeManager = new ProjectEditorRuntimeManager();
 
   const gitManager = yield* GitManager;
   const terminalManager = yield* TerminalManager;
@@ -525,6 +535,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     logOutgoingPush,
   });
   yield* readiness.markPushBusReady;
+  yield* Effect.addFinalizer(() =>
+    Effect.promise(() => projectEditorRuntimeManager.disposeAll()).pipe(
+      Effect.ignoreCause({ log: true }),
+    ),
+  );
   yield* keybindingsManager.start.pipe(
     Effect.mapError(
       (cause) => new ServerLifecycleError({ operation: "keybindingsRuntimeStart", cause }),
@@ -990,6 +1005,45 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   yield* Effect.addFinalizer(() => Effect.sync(() => unsubscribeTerminalEvents()));
   yield* readiness.markTerminalSubscriptionsReady;
 
+  const resolveProjectEditorTargetCwd = Effect.fn(function* (input: {
+    projectId: ProjectId;
+    cwd: string;
+  }): Effect.fn.Return<string, RouteRequestError> {
+    const snapshot = yield* projectionReadModelQuery.getSnapshot().pipe(
+      Effect.mapError(
+        () =>
+          new RouteRequestError({
+            message: "Unable to resolve the current project editor state.",
+          }),
+      ),
+    );
+    const project = snapshot.projects.find(
+      (candidate) => candidate.id === input.projectId && candidate.deletedAt === null,
+    );
+    if (!project) {
+      return yield* new RouteRequestError({ message: `Unknown project: ${input.projectId}` });
+    }
+
+    const normalizedCwd = input.cwd.trim();
+    if (normalizedCwd === project.workspaceRoot) {
+      return normalizedCwd;
+    }
+
+    const matchingWorktree = snapshot.threads.some(
+      (thread) =>
+        thread.projectId === input.projectId &&
+        thread.deletedAt === null &&
+        thread.worktreePath === normalizedCwd,
+    );
+    if (matchingWorktree) {
+      return normalizedCwd;
+    }
+
+    return yield* new RouteRequestError({
+      message: "Editor cwd must match the project root or one of the project's worktrees.",
+    });
+  });
+
   yield* NodeHttpServer.make(() => httpServer, listenOptions).pipe(
     Effect.mapError((cause) => new ServerLifecycleError({ operation: "httpServerListen", cause })),
   );
@@ -1079,6 +1133,29 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.shellOpenInEditor: {
         const body = stripRequestTag(request.body);
         return yield* openInEditor(body);
+      }
+
+      case WS_METHODS.editorEnsureSession: {
+        const body = stripRequestTag(request.body);
+        const cwd = yield* resolveProjectEditorTargetCwd(body);
+        return yield* Effect.tryPromise({
+          try: () => projectEditorRuntimeManager.ensureSession(body.projectId, cwd),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to start editor session: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.editorDisposeSession: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () => projectEditorRuntimeManager.disposeSession(body.projectId),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to dispose editor session: ${String(cause)}`,
+            }),
+        });
       }
 
       case WS_METHODS.gitStatus: {
@@ -1330,6 +1407,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
   httpServer.on("upgrade", (request, socket, head) => {
     socket.on("error", () => {}); // Prevent unhandled `EPIPE`/`ECONNRESET` from crashing the process if the client disconnects mid-handshake
+
+    if (!URL.canParse(request.url ?? "/", `http://localhost:${port}`)) {
+      rejectUpgrade(socket, 400, "Invalid WebSocket URL");
+      return;
+    }
 
     if (authToken) {
       let providedToken: string | null = null;

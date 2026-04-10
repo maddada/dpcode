@@ -4,7 +4,7 @@
 // Exports: EDITORS, EditorId, OpenInEditorInput
 
 import { Schema } from "effect";
-import { TrimmedNonEmptyString } from "./baseSchemas";
+import { ProjectId, TrimmedNonEmptyString } from "./baseSchemas";
 
 export const EditorLaunchStyle = Schema.Literals(["direct-path", "goto", "line-column"]);
 export type EditorLaunchStyle = typeof EditorLaunchStyle.Type;
@@ -41,3 +41,21 @@ export const OpenInEditorInput = Schema.Struct({
   editor: EditorId,
 });
 export type OpenInEditorInput = typeof OpenInEditorInput.Type;
+
+export const ProjectEditorEnsureSessionInput = Schema.Struct({
+  projectId: ProjectId,
+  cwd: TrimmedNonEmptyString,
+});
+export type ProjectEditorEnsureSessionInput = typeof ProjectEditorEnsureSessionInput.Type;
+
+export const ProjectEditorDisposeSessionInput = Schema.Struct({
+  projectId: ProjectId,
+});
+export type ProjectEditorDisposeSessionInput = typeof ProjectEditorDisposeSessionInput.Type;
+
+export const ProjectEditorSession = Schema.Struct({
+  projectId: ProjectId,
+  cwd: TrimmedNonEmptyString,
+  path: TrimmedNonEmptyString,
+});
+export type ProjectEditorSession = typeof ProjectEditorSession.Type;

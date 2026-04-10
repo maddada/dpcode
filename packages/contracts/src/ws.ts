@@ -41,7 +41,12 @@ import {
 } from "./terminal";
 import { KeybindingRule } from "./keybindings";
 import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
-import { OpenInEditorInput } from "./editor";
+import {
+  OpenInEditorInput,
+  ProjectEditorDisposeSessionInput,
+  ProjectEditorEnsureSessionInput,
+  ProjectEditorSession,
+} from "./editor";
 import {
   ServerConfigUpdatedPayload,
   ServerProviderStatusesUpdatedPayload,
@@ -68,6 +73,10 @@ export const WS_METHODS = {
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
+
+  // Embedded editor methods
+  editorEnsureSession: "editor.ensureSession",
+  editorDisposeSession: "editor.disposeSession",
 
   // Git methods
   gitPull: "git.pull",
@@ -150,6 +159,10 @@ const WebSocketRequestBody = Schema.Union([
 
   // Shell methods
   tagRequestBody(WS_METHODS.shellOpenInEditor, OpenInEditorInput),
+
+  // Embedded editor methods
+  tagRequestBody(WS_METHODS.editorEnsureSession, ProjectEditorEnsureSessionInput),
+  tagRequestBody(WS_METHODS.editorDisposeSession, ProjectEditorDisposeSessionInput),
 
   // Git methods
   tagRequestBody(WS_METHODS.gitPull, GitPullInput),
@@ -284,6 +297,8 @@ export const WsPush = Schema.Union([
 export type WsPush = typeof WsPush.Type;
 
 export type WsPushMessage<C extends WsPushChannel> = Extract<WsPush, { channel: C }>;
+
+export { ProjectEditorSession };
 
 export const WsPushEnvelopeBase = Schema.Struct({
   type: Schema.Literal("push"),

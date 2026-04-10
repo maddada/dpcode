@@ -15,7 +15,7 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "node --import tsx src/index.ts",
     "build": "node scripts/cli.ts build",
     "start": "node dist/index.mjs",
     "prepare": "effect-language-service patch",
@@ -43,6 +43,7 @@
     "@types/node": "catalog:",
     "@types/ws": "^8.5.13",
     "tsdown": "catalog:",
+    "tsx": "^4.21.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

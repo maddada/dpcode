@@ -61,7 +61,12 @@ import type {
   OrchestrationEvent,
   OrchestrationReadModel,
 } from "./orchestration";
-import { EditorId } from "./editor";
+import {
+  EditorId,
+  type ProjectEditorDisposeSessionInput,
+  type ProjectEditorEnsureSessionInput,
+  type ProjectEditorSession,
+} from "./editor";
 import type { ThreadId } from "./baseSchemas";
 import type {
   ProviderComposerCapabilities,
@@ -260,6 +265,10 @@ export interface NativeApi {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
     openExternal: (url: string) => Promise<void>;
     showInFolder: (path: string) => Promise<void>;
+  };
+  editor: {
+    ensureSession: (input: ProjectEditorEnsureSessionInput) => Promise<ProjectEditorSession>;
+    disposeSession: (input: ProjectEditorDisposeSessionInput) => Promise<void>;
   };
   git: {
     // Existing branch/worktree API
