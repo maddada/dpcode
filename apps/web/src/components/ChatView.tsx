@@ -264,6 +264,7 @@ import {
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerSlashCommands } from "../hooks/useComposerSlashCommands";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useProjectEditorActions } from "../hooks/useProjectEditorActions";
 import {
   canCreateThreadHandoff,
   resolveHandoffTargetProvider,
@@ -707,6 +708,7 @@ export default function ChatView({
   const timestampFormat = settings.timestampFormat;
   const navigate = useNavigate();
   const { handleNewThread } = useHandleNewThread();
+  const { openProjectEditor } = useProjectEditorActions();
   const { createThreadHandoff } = useThreadHandoff();
   const rawSearch = useSearch({
     strict: false,
@@ -2010,6 +2012,10 @@ export default function ChatView({
   const isGitRepo = branchesQuery.data?.isRepo ?? true;
   const terminalToggleShortcutLabel = useMemo(
     () => shortcutLabelForCommand(keybindings, "terminal.toggle"),
+    [keybindings],
+  );
+  const projectEditorShortcutLabel = useMemo(
+    () => shortcutLabelForCommand(keybindings, "chat.openProjectEditor"),
     [keybindings],
   );
   const splitTerminalShortcutLabel = useMemo(
@@ -5639,6 +5645,7 @@ export default function ChatView({
           availableEditors={availableEditors}
           terminalAvailable={activeProject !== undefined}
           terminalOpen={terminalState.terminalOpen}
+          editorShortcutLabel={projectEditorShortcutLabel}
           terminalToggleShortcutLabel={terminalToggleShortcutLabel}
           browserToggleShortcutLabel={browserPanelShortcutLabel}
           diffToggleShortcutLabel={diffPanelShortcutLabel}
@@ -5673,6 +5680,12 @@ export default function ChatView({
           onAddProjectScript={saveProjectScript}
           onUpdateProjectScript={updateProjectScript}
           onDeleteProjectScript={deleteProjectScript}
+          onOpenEditor={() => {
+            if (!activeProject) {
+              return;
+            }
+            void openProjectEditor(activeProject.id, { targetCwd: threadWorkspaceCwd });
+          }}
           onToggleTerminal={toggleTerminalVisibility}
           onToggleDiff={onToggleDiff}
           onToggleBrowser={onToggleBrowser}

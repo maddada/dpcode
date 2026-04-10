@@ -292,6 +292,10 @@ export function createWsNativeApi(): NativeApi {
         // No-op in browser - this is a desktop-only feature
       },
     },
+    editor: {
+      ensureSession: (input) => transport.request(WS_METHODS.editorEnsureSession, input),
+      disposeSession: (input) => transport.request(WS_METHODS.editorDisposeSession, input),
+    },
     git: {
       pull: (input) => transport.request(WS_METHODS.gitPull, input),
       status: (input) => transport.request(WS_METHODS.gitStatus, input),

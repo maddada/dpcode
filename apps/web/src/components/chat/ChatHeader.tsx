@@ -17,7 +17,16 @@ import { BsLayoutSplit, BsTerminal } from "react-icons/bs";
 import { FiGitBranch } from "react-icons/fi";
 import { HiMiniArrowsPointingOut } from "react-icons/hi2";
 import GitActionsControl from "../GitActionsControl";
-import { AppsIcon, ArrowRightIcon, DiffIcon, GlobeIcon, PlusIcon } from "~/lib/icons";
+import {
+  AppsIcon,
+  ArrowRightIcon,
+  DiffIcon,
+  EllipsisIcon,
+  FileIcon,
+  GlobeIcon,
+  PlusIcon,
+  TerminalSquareIcon,
+} from "~/lib/icons";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
@@ -54,6 +63,7 @@ interface ChatHeaderProps {
   availableEditors: ReadonlyArray<EditorId>;
   terminalAvailable: boolean;
   terminalOpen: boolean;
+  editorShortcutLabel: string | null;
   terminalToggleShortcutLabel: string | null;
   browserToggleShortcutLabel: string | null;
   diffToggleShortcutLabel: string | null;
@@ -77,6 +87,7 @@ interface ChatHeaderProps {
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
   onDeleteProjectScript: (scriptId: string) => Promise<void>;
+  onOpenEditor: () => void;
   onToggleTerminal: () => void;
   onToggleDiff: () => void;
   onToggleBrowser: () => void;
@@ -98,6 +109,7 @@ export const ChatHeader = memo(function ChatHeader({
   availableEditors,
   terminalAvailable,
   terminalOpen,
+  editorShortcutLabel,
   terminalToggleShortcutLabel,
   browserToggleShortcutLabel,
   diffToggleShortcutLabel,
@@ -116,6 +128,7 @@ export const ChatHeader = memo(function ChatHeader({
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
+  onOpenEditor,
   onToggleTerminal,
   onToggleDiff,
   onToggleBrowser,
@@ -266,6 +279,54 @@ export const ChatHeader = memo(function ChatHeader({
             onDeleteScript={onDeleteProjectScript}
           />
         ) : null}
+        {/* Inline controls — shown when there's enough room. */}
+        {!isDisposableThread && !compact && activeProjectName ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  className="shrink-0 gap-1.5"
+                  aria-label="Open project editor"
+                  onClick={onOpenEditor}
+                >
+                  <FileIcon className="size-3.5 shrink-0" />
+                  <span className="truncate">Editor</span>
+                </Button>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {editorShortcutLabel
+                ? `Open project editor (${editorShortcutLabel})`
+                : "Open project editor"}
+            </TooltipPopup>
+          </Tooltip>
+        ) : null}
+        {!isDisposableThread && !compact && terminalAvailable ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="shrink-0"
+                  pressed={terminalOpen}
+                  onPressedChange={onToggleTerminal}
+                  aria-label="Toggle terminal"
+                  variant="outline"
+                  size="xs"
+                >
+                  <TerminalSquareIcon className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {terminalToggleShortcutLabel
+                ? `Toggle terminal (${terminalToggleShortcutLabel})`
+                : "Toggle terminal"}
+            </TooltipPopup>
+          </Tooltip>
+        ) : null}
 
         {/* Panel toggles menu — editor, terminal, browser, split chat. */}
         {!isDisposableThread &&
@@ -289,21 +350,32 @@ export const ChatHeader = memo(function ChatHeader({
               className="w-50 rounded-lg border-border bg-popover shadow-lg"
             >
               {activeProjectName ? (
-                <MenuItem
-                  onClick={() => {
-                    const api = readNativeApi();
-                    if (api && openInCwd && preferredEditor) {
-                      void api.shell.openInEditor(openInCwd, preferredEditor);
-                    }
-                  }}
-                  disabled={!preferredEditor || !openInCwd}
-                >
-                  {EditorIcon ? (
-                    <EditorIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  ) : null}
-                  <span>Open in editor</span>
-                </MenuItem>
+                <>
+                  <MenuSeparator className="mx-1" />
+                  <MenuItem onClick={onOpenEditor}>
+                    <FileIcon className="size-3.5 shrink-0" />
+                    <span>Project editor</span>
+                    {editorShortcutLabel && (
+                      <span className="ml-auto text-[11px] opacity-60">{editorShortcutLabel}</span>
+                    )}
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      const api = readNativeApi();
+                      if (api && openInCwd && preferredEditor) {
+                        void api.shell.openInEditor(openInCwd, preferredEditor);
+                      }
+                    }}
+                    disabled={!preferredEditor || !openInCwd}
+                  >
+                    {EditorIcon ? (
+                      <EditorIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    ) : null}
+                    <span>Open in editor</span>
+                  </MenuItem>
+                </>
               ) : null}
+              <MenuSeparator className="mx-1" />
               <MenuItem onClick={onToggleTerminal} disabled={!terminalAvailable}>
                 <BsTerminal className="size-3.5 shrink-0" />
                 <span>{terminalOpen ? "Hide terminal" : "Show terminal"}</span>

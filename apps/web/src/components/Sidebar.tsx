@@ -15,6 +15,7 @@ import {
   TerminalIcon,
   Trash2,
   TriangleAlertIcon,
+  VSCodeEditorIcon,
 } from "~/lib/icons";
 import { autoAnimate } from "@formkit/auto-animate";
 import { FiGitBranch, FiPlus } from "react-icons/fi";
@@ -69,6 +70,7 @@ import {
 import { isElectron } from "../env";
 import { APP_VERSION } from "../branding";
 import { showConfirmDialogFallback } from "../confirmDialogFallback";
+import { isEmbeddedEditorFocused, isProjectEditorPathname } from "../lib/embeddedEditorFocus";
 import { isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
 import { useStore } from "../store";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -172,6 +174,8 @@ import {
 } from "../splitViewStore";
 import { useTemporaryThreadStore } from "../temporaryThreadStore";
 import { usePinnedThreadsStore } from "../pinnedThreadsStore";
+import { useProjectEditorActions } from "../hooks/useProjectEditorActions";
+import { projectEditorTerminalThreadId, useProjectEditorStore } from "../projectEditorStore";
 import { useWorkspaceStore, workspaceThreadId } from "../workspaceStore";
 import type {
   SidebarSearchAction,
@@ -324,6 +328,11 @@ type SidebarSplitPreview = {
 };
 
 type SidebarProjectEntry =
+  | {
+      kind: "editor";
+      rowId: string;
+      projectId: ProjectId;
+    }
   | {
       kind: "thread";
       rowId: ThreadId;
@@ -734,6 +743,8 @@ export default function Sidebar() {
   const clearTerminalState = useTerminalStateStore((state) => state.clearTerminalState);
   const openChatThreadPage = useTerminalStateStore((state) => state.openChatThreadPage);
   const openTerminalThreadPage = useTerminalStateStore((state) => state.openTerminalThreadPage);
+  const editorEntriesByProjectId = useProjectEditorStore((state) => state.editorsByProjectId);
+  const deleteEditor = useProjectEditorStore((state) => state.deleteEditor);
   const clearProjectDraftThreads = useComposerDraftStore((store) => store.clearProjectDraftThreads);
   const clearProjectDraftThreadById = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadById,
@@ -757,6 +768,7 @@ export default function Sidebar() {
   const isOnWorkspace = pathname.startsWith("/workspace");
   const { settings: appSettings, updateSettings } = useAppSettings();
   const { handleNewThread } = useHandleNewThread();
+  const { openProjectEditor } = useProjectEditorActions();
   const { createThreadHandoff } = useThreadHandoff();
   const routeThreadId = useParams({
     strict: false,
@@ -832,6 +844,10 @@ export default function Sidebar() {
   const selectSidebarDisplayThreads = useMemo(() => createSidebarDisplayThreadsSelector(), []);
   const sidebarThreads = useStore(selectSidebarThreads);
   const sidebarDisplayThreads = useStore(selectSidebarDisplayThreads);
+  const activeProjectEditorProjectId = useMemo(() => {
+    const match = pathname.match(/^\/project\/([^/]+)\/editor$/);
+    return match?.[1] ? ProjectId.makeUnsafe(match[1]) : null;
+  }, [pathname]);
   const terminalOpen = routeThreadId
     ? selectThreadTerminalState(terminalStateByThreadId, routeThreadId).terminalOpen
     : false;
@@ -954,7 +970,10 @@ export default function Sidebar() {
         sidebarThreads.filter((thread) => thread.projectId === projectId),
         appSettings.sidebarThreadSortOrder,
       )[0];
-      if (!latestThread) return;
+      if (!latestThread) {
+        void navigate({ to: "/" });
+        return;
+      }
 
       void navigate({
         to: "/$threadId",
@@ -1207,6 +1226,28 @@ export default function Sidebar() {
       focusMostRecentThreadForProject,
       handleNewThread,
       sidebarThreads,
+    ],
+  );
+
+  const handleDeleteProjectEditor = useCallback(
+    async (projectId: ProjectId) => {
+      const api = readNativeApi();
+      if (api) {
+        await api.editor.disposeSession({ projectId }).catch(() => undefined);
+      }
+
+      clearTerminalState(projectEditorTerminalThreadId(projectId));
+      deleteEditor(projectId);
+
+      if (activeProjectEditorProjectId === projectId) {
+        focusMostRecentThreadForProject(projectId);
+      }
+    },
+    [
+      activeProjectEditorProjectId,
+      clearTerminalState,
+      deleteEditor,
+      focusMostRecentThreadForProject,
     ],
   );
 
@@ -2666,6 +2707,52 @@ export default function Sidebar() {
       </div>
     );
   }
+  function renderProjectEditorRow(project: (typeof sortedProjects)[number]) {
+    const isActive = activeProjectEditorProjectId === project.id;
+
+    return (
+      <SidebarMenuSubItem
+        key={`editor:${project.id}`}
+        className="group/thread-row w-full"
+        data-thread-item
+      >
+        <SidebarMenuSubButton
+          render={<div role="button" tabIndex={0} />}
+          size="sm"
+          isActive={isActive}
+          className={resolveThreadRowClassName({
+            isActive,
+            isSelected: false,
+          })}
+          onClick={() => {
+            void openProjectEditor(project.id);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            void openProjectEditor(project.id);
+          }}
+        >
+          <VSCodeEditorIcon aria-hidden="true" className="size-3.5 shrink-0 text-foreground/72" />
+          <div className="min-w-0 flex-1 truncate text-[13px] leading-5 text-foreground/88">
+            Editor
+          </div>
+        </SidebarMenuSubButton>
+        <SidebarMenuAction
+          render={<button type="button" aria-label={`Delete ${project.name} editor`} />}
+          showOnHover
+          className="top-1 right-1 size-5 rounded-md p-0 text-muted-foreground/55 hover:bg-white/8 hover:text-foreground"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void handleDeleteProjectEditor(project.id);
+          }}
+        >
+          <Trash2 className="size-3" />
+        </SidebarMenuAction>
+      </SidebarMenuSubItem>
+    );
+  }
 
   function renderThreadRow(
     thread: SidebarThreadSummary,
@@ -3069,6 +3156,10 @@ export default function Sidebar() {
         }),
       ),
     );
+    const activeRowId =
+      activeProjectEditorProjectId === project.id
+        ? `editor:${project.id}`
+        : (activeSidebarThreadId ?? undefined);
     const isThreadListExpanded = expandedThreadListsByProject.has(project.id);
     const replacedThreadIds = new Set(
       projectSplitViews.map((splitView) => splitView.sourceThreadId),
@@ -3104,10 +3195,17 @@ export default function Sidebar() {
         splitView,
       });
     }
+    if (editorEntriesByProjectId[project.id]) {
+      orderedEntries.unshift({
+        kind: "editor",
+        rowId: `editor:${project.id}`,
+        projectId: project.id,
+      });
+    }
     const activeEntry =
-      activeThreadId === undefined
+      activeRowId === undefined
         ? null
-        : (orderedEntries.find((entry) => entry.rowId === activeThreadId) ?? null);
+        : (orderedEntries.find((entry) => entry.rowId === activeRowId) ?? null);
     const { hasHiddenEntries: hasHiddenThreads, visibleEntries: renderedEntries } =
       getVisibleSidebarEntriesForPreview({
         entries: orderedEntries,
@@ -3117,6 +3215,7 @@ export default function Sidebar() {
       });
     const pinnedCollapsedEntry = !project.expanded && activeEntry ? activeEntry : null;
     const visibleEntries = pinnedCollapsedEntry ? [pinnedCollapsedEntry] : renderedEntries;
+    const shouldShowThreadPanel = project.expanded;
     const orderedProjectThreadIds = projectThreads.map((thread) => thread.id);
     const renderSplitRow = (splitView: SplitView) => {
       const leftPreview = resolveSplitPreview(splitView.leftThreadId);
@@ -3300,7 +3399,7 @@ export default function Sidebar() {
                     />
                   }
                   showOnHover
-                  className="sidebar-icon-button top-1 right-[1.875rem] size-5 p-0"
+                  className="top-1 right-[3.25rem] size-5 rounded-md p-0 text-muted-foreground/60 hover:bg-white/8 hover:text-foreground"
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -3326,6 +3425,29 @@ export default function Sidebar() {
             <TooltipTrigger
               render={
                 <SidebarMenuAction
+                  render={<button type="button" aria-label={`Open ${project.name} editor`} />}
+                  showOnHover
+                  className="top-1 right-[1.75rem] size-5 rounded-md p-0 text-muted-foreground/60 hover:bg-white/8 hover:text-foreground"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void openProjectEditor(project.id);
+                  }}
+                >
+                  <VSCodeEditorIcon className="size-3.5" />
+                </SidebarMenuAction>
+              }
+            />
+            <TooltipPopup side="top">
+              {projectEditorShortcutLabel
+                ? `Open editor (${projectEditorShortcutLabel})`
+                : "Open editor"}
+            </TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <SidebarMenuAction
                   render={
                     <button
                       type="button"
@@ -3333,7 +3455,7 @@ export default function Sidebar() {
                     />
                   }
                   showOnHover
-                  className="sidebar-icon-button top-1 right-[3.375rem] size-5 p-0"
+                  className="top-1 right-[4.75rem] size-5 rounded-md p-0 text-muted-foreground/60 hover:bg-white/8 hover:text-foreground"
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -3383,32 +3505,34 @@ export default function Sidebar() {
             </TooltipPopup>
           </Tooltip>
         </div>
-
-        <div
-          className={cn(
-            "grid pt-1 transition-[grid-template-rows,opacity] duration-220 ease-out",
-            project.expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-          )}
-        >
-          <div className="min-h-0 overflow-hidden">
-            <SidebarMenuSub
-              ref={attachThreadListAutoAnimateRef}
-              className={cn(
-                "mx-0 my-0 w-full translate-x-0 gap-0.5 border-l-0 px-0 py-0 transition-transform duration-220 ease-out",
-                project.expanded ? "translate-y-0" : "-translate-y-1 pointer-events-none",
-              )}
-            >
-              {visibleEntries.map((entry) =>
-                entry.kind === "thread"
-                  ? renderThreadRow(
-                      entry.thread,
-                      orderedProjectThreadIds,
-                      entry.depth,
-                      entry.childCount,
-                      entry.isExpanded,
-                    )
-                  : renderSplitRow(entry.splitView),
-              )}
+        {shouldShowThreadPanel ? (
+          <div
+            className={cn(
+              "grid pt-1 transition-[grid-template-rows,opacity] duration-220 ease-out",
+              project.expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <SidebarMenuSub
+                ref={attachThreadListAutoAnimateRef}
+                className={cn(
+                  "mx-0 my-0 w-full translate-x-0 gap-0.5 border-l-0 px-0 py-0 transition-transform duration-220 ease-out",
+                  project.expanded ? "translate-y-0" : "-translate-y-1 pointer-events-none",
+                )}
+              >
+                {visibleEntries.map((entry) =>
+                  entry.kind === "editor"
+                    ? renderProjectEditorRow(project)
+                    : entry.kind === "thread"
+                      ? renderThreadRow(
+                          entry.thread,
+                          orderedProjectThreadIds,
+                          entry.depth,
+                          entry.childCount,
+                          entry.isExpanded,
+                        )
+                      : renderSplitRow(entry.splitView),
+                )}
 
               {hasHiddenThreads && !isThreadListExpanded && (
                 <SidebarMenuSubItem className="w-full">
@@ -3440,9 +3564,10 @@ export default function Sidebar() {
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>
               )}
-            </SidebarMenuSub>
+              </SidebarMenuSub>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     );
   }
@@ -3504,6 +3629,9 @@ export default function Sidebar() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      if (isProjectEditorPathname(pathname) && isEmbeddedEditorFocused()) {
+        return;
+      }
 
       if ((event.metaKey || event.ctrlKey) && event.key === "o") {
         event.preventDefault();
@@ -3562,6 +3690,7 @@ export default function Sidebar() {
     handleStartAddProject,
     isOnWorkspace,
     keybindings,
+    pathname,
     terminalOpen,
     visibleSidebarThreadIds,
   ]);
@@ -3641,6 +3770,7 @@ export default function Sidebar() {
   const newThreadShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.newLocal") ??
     shortcutLabelForCommand(keybindings, "chat.new");
+  const projectEditorShortcutLabel = shortcutLabelForCommand(keybindings, "chat.openProjectEditor");
   const newTerminalThreadShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newTerminal");
   const searchShortcutLabel =
     shortcutLabelForCommand(keybindings, "sidebar.search") ??

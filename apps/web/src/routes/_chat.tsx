@@ -1,12 +1,15 @@
-import { type ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { type ProjectId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 
+import { ProjectEditorView } from "../components/project-editor/ProjectEditorView";
 import ThreadSidebar from "../components/Sidebar";
 import { isElectron } from "../env";
 import { useDisposableThreadLifecycle } from "../hooks/useDisposableThreadLifecycle";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useProjectEditorActions } from "../hooks/useProjectEditorActions";
+import { isEmbeddedEditorFocused, isProjectEditorPathname } from "../lib/embeddedEditorFocus";
 import { resolveThreadEnvironmentMode } from "../lib/threadEnvironment";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
@@ -18,14 +21,23 @@ import { useAppSettings } from "~/appSettings";
 import { Sidebar, SidebarProvider, SidebarRail, useSidebar } from "~/components/ui/sidebar";
 import { useChatCodeFont } from "~/hooks/useChatCodeFont";
 import { useUIFont } from "~/hooks/useUIFont";
+import { cn } from "~/lib/utils";
+import { useProjectEditorStore } from "~/projectEditorStore";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
 const THREAD_SIDEBAR_MIN_WIDTH = 13 * 16;
 const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
+const PROJECT_EDITOR_ROUTE_PATTERN = /^\/project\/([^/]+)\/editor(?:\/)?$/;
+
+function parseProjectEditorRouteProjectId(pathname: string): ProjectId | null {
+  const match = pathname.match(PROJECT_EDITOR_ROUTE_PATTERN);
+  return (match?.[1] as ProjectId | undefined) ?? null;
+}
 
 function ChatRouteGlobalShortcuts() {
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { toggleSidebar } = useSidebar();
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
   const selectedThreadIdsSize = useThreadSelectionStore((state) => state.selectedThreadIds.size);
@@ -37,6 +49,7 @@ function ChatRouteGlobalShortcuts() {
     handleNewThread,
     projects,
   } = useHandleNewThread();
+  const { openCurrentProjectEditor, openCurrentProjectTerminal } = useProjectEditorActions();
   useDisposableThreadLifecycle(activeContextThreadId);
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const keybindings = serverConfigQuery.data?.keybindings ?? EMPTY_KEYBINDINGS;
@@ -50,6 +63,9 @@ function ChatRouteGlobalShortcuts() {
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      if (isProjectEditorPathname(pathname) && isEmbeddedEditorFocused()) {
+        return;
+      }
 
       if (event.key === "Escape" && selectedThreadIdsSize > 0) {
         event.preventDefault();
@@ -124,6 +140,20 @@ function ChatRouteGlobalShortcuts() {
         return;
       }
 
+      if (command === "chat.openProjectEditor") {
+        event.preventDefault();
+        event.stopPropagation();
+        void openCurrentProjectEditor();
+        return;
+      }
+
+      if (command === "chat.openProjectTerminal") {
+        event.preventDefault();
+        event.stopPropagation();
+        void openCurrentProjectTerminal();
+        return;
+      }
+
       if (command !== "chat.new") return;
       const projectId = activeProjectId ?? projects[0]?.id;
       if (!projectId) return;
@@ -156,7 +186,10 @@ function ChatRouteGlobalShortcuts() {
     selectedThreadIdsSize,
     terminalOpen,
     toggleSidebar,
+    pathname,
     appSettings.defaultThreadEnvMode,
+    openCurrentProjectEditor,
+    openCurrentProjectTerminal,
   ]);
 
   useEffect(() => {
@@ -196,9 +229,14 @@ const SIDEBAR_INNER_CLASS = {
 
 function ChatRouteLayout() {
   useChatCodeFont();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   useUIFont();
   const { settings } = useAppSettings();
   const side = settings.sidebarSide;
+  const activeProjectEditorId = useMemo(
+    () => parseProjectEditorRouteProjectId(pathname),
+    [pathname],
+  );
 
   const sidebarElement = (
     <Sidebar
@@ -224,9 +262,78 @@ function ChatRouteLayout() {
     <SidebarProvider defaultOpen>
       <ChatRouteGlobalShortcuts />
       {side === "left" ? sidebarElement : null}
-      <Outlet />
+      <div className="relative min-h-dvh min-w-0 flex-1 overflow-hidden">
+        <div
+          className={cn(
+            "h-full min-h-0 min-w-0 overflow-hidden",
+            activeProjectEditorId && "hidden",
+          )}
+        >
+          <Outlet />
+        </div>
+        <PersistentProjectEditorLayer activeProjectEditorId={activeProjectEditorId} />
+      </div>
       {side === "right" ? sidebarElement : null}
     </SidebarProvider>
+  );
+}
+
+function PersistentProjectEditorLayer(props: { activeProjectEditorId: ProjectId | null }) {
+  const editorsByProjectId = useProjectEditorStore((store) => store.editorsByProjectId);
+  const [mountedProjectEditorIds, setMountedProjectEditorIds] = useState<ProjectId[]>([]);
+
+  useEffect(() => {
+    const activeProjectEditorId = props.activeProjectEditorId;
+    if (!activeProjectEditorId) {
+      return;
+    }
+
+    setMountedProjectEditorIds((currentIds) =>
+      currentIds.includes(activeProjectEditorId)
+        ? currentIds
+        : [...currentIds, activeProjectEditorId],
+    );
+  }, [props.activeProjectEditorId]);
+
+  const editorProjectIds = useMemo(
+    () =>
+      Object.keys(editorsByProjectId).filter(
+        (projectId) => editorsByProjectId[projectId as ProjectId] !== undefined,
+      ) as ProjectId[],
+    [editorsByProjectId],
+  );
+  const visibleProjectEditorIds = useMemo(
+    () => mountedProjectEditorIds.filter((projectId) => editorProjectIds.includes(projectId)),
+    [editorProjectIds, mountedProjectEditorIds],
+  );
+
+  if (visibleProjectEditorIds.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        "absolute inset-0 min-h-0 min-w-0 overflow-hidden",
+        !props.activeProjectEditorId && "pointer-events-none",
+      )}
+    >
+      {visibleProjectEditorIds.map((projectId) => {
+        const isActive = projectId === props.activeProjectEditorId;
+        return (
+          <div
+            key={projectId}
+            aria-hidden={!isActive}
+            className={cn(
+              "absolute inset-0 min-h-0 min-w-0 overflow-hidden",
+              !isActive && "hidden",
+            )}
+          >
+            <ProjectEditorView projectId={projectId as ProjectId} />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

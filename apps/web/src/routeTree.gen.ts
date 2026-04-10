@@ -16,6 +16,7 @@ import { Route as ChatPluginsRouteImport } from './routes/_chat.plugins'
 import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
 import { Route as ChatWorkspaceIndexRouteImport } from './routes/_chat.workspace.index'
 import { Route as ChatWorkspaceWorkspaceIdRouteImport } from './routes/_chat.workspace.$workspaceId'
+import { Route as ChatProjectProjectIdEditorRouteImport } from './routes/_chat.project.$projectId.editor'
 
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
@@ -52,6 +53,12 @@ const ChatWorkspaceWorkspaceIdRoute =
     path: '/workspace/$workspaceId',
     getParentRoute: () => ChatRoute,
   } as any)
+const ChatProjectProjectIdEditorRoute =
+  ChatProjectProjectIdEditorRouteImport.update({
+    id: '/project/$projectId/editor',
+    path: '/project/$projectId/editor',
+    getParentRoute: () => ChatRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
@@ -60,6 +67,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof ChatSettingsRoute
   '/workspace/$workspaceId': typeof ChatWorkspaceWorkspaceIdRoute
   '/workspace/': typeof ChatWorkspaceIndexRoute
+  '/project/$projectId/editor': typeof ChatProjectProjectIdEditorRoute
 }
 export interface FileRoutesByTo {
   '/$threadId': typeof ChatThreadIdRoute
@@ -68,6 +76,7 @@ export interface FileRoutesByTo {
   '/': typeof ChatIndexRoute
   '/workspace/$workspaceId': typeof ChatWorkspaceWorkspaceIdRoute
   '/workspace': typeof ChatWorkspaceIndexRoute
+  '/project/$projectId/editor': typeof ChatProjectProjectIdEditorRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -78,6 +87,7 @@ export interface FileRoutesById {
   '/_chat/': typeof ChatIndexRoute
   '/_chat/workspace/$workspaceId': typeof ChatWorkspaceWorkspaceIdRoute
   '/_chat/workspace/': typeof ChatWorkspaceIndexRoute
+  '/_chat/project/$projectId/editor': typeof ChatProjectProjectIdEditorRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -88,6 +98,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/workspace/$workspaceId'
     | '/workspace/'
+    | '/project/$projectId/editor'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$threadId'
@@ -96,6 +107,7 @@ export interface FileRouteTypes {
     | '/'
     | '/workspace/$workspaceId'
     | '/workspace'
+    | '/project/$projectId/editor'
   id:
     | '__root__'
     | '/_chat'
@@ -105,6 +117,7 @@ export interface FileRouteTypes {
     | '/_chat/'
     | '/_chat/workspace/$workspaceId'
     | '/_chat/workspace/'
+    | '/_chat/project/$projectId/editor'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -162,6 +175,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatWorkspaceWorkspaceIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/project/$projectId/editor': {
+      id: '/_chat/project/$projectId/editor'
+      path: '/project/$projectId/editor'
+      fullPath: '/project/$projectId/editor'
+      preLoaderRoute: typeof ChatProjectProjectIdEditorRouteImport
+      parentRoute: typeof ChatRoute
+    }
   }
 }
 
@@ -172,6 +192,7 @@ interface ChatRouteChildren {
   ChatIndexRoute: typeof ChatIndexRoute
   ChatWorkspaceWorkspaceIdRoute: typeof ChatWorkspaceWorkspaceIdRoute
   ChatWorkspaceIndexRoute: typeof ChatWorkspaceIndexRoute
+  ChatProjectProjectIdEditorRoute: typeof ChatProjectProjectIdEditorRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
@@ -181,6 +202,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatIndexRoute: ChatIndexRoute,
   ChatWorkspaceWorkspaceIdRoute: ChatWorkspaceWorkspaceIdRoute,
   ChatWorkspaceIndexRoute: ChatWorkspaceIndexRoute,
+  ChatProjectProjectIdEditorRoute: ChatProjectProjectIdEditorRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
