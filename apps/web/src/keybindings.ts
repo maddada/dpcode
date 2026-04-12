@@ -319,6 +319,22 @@ export function shortcutLabelForCommand(
   return null;
 }
 
+export function shortcutForCommand(
+  keybindings: ResolvedKeybindingsConfig,
+  command: KeybindingCommand,
+): KeybindingShortcut | null {
+  for (let index = keybindings.length - 1; index >= 0; index -= 1) {
+    const binding = keybindings[index];
+    if (!binding || binding.command !== command) continue;
+    return binding.shortcut;
+  }
+  for (const binding of getFallbackBindings(keybindings)) {
+    if (binding.command !== command) continue;
+    return binding.shortcut;
+  }
+  return null;
+}
+
 export function isTerminalToggleShortcut(
   event: ShortcutEventLike,
   keybindings: ResolvedKeybindingsConfig,

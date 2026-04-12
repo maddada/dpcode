@@ -448,7 +448,13 @@ export function ProjectEditorView({ projectId }: { projectId: ProjectId }) {
         ) : null}
         {diffOpen && resolvedBackingThreadId ? (
           <div className="w-[min(45vw,34rem)] min-w-[24rem] max-w-[34rem] border-l border-border bg-card">
-            <DiffPanel mode="sidebar" threadId={resolvedBackingThreadId} />
+            <DiffPanel
+              mode="sidebar"
+              threadId={resolvedBackingThreadId}
+              onClosePanel={() => {
+                void updatePanelSearch(undefined);
+              }}
+            />
           </div>
         ) : null}
       </div>

@@ -516,7 +516,7 @@ function SplitPaneSurface(props: {
 
   return (
     <div className="group relative flex min-h-0 min-w-0 flex-1 bg-background">
-      {props.threadId ? (
+      {props.threadId && !panelOpen ? (
         <div className="pointer-events-none absolute right-3 top-[3.75rem] z-20 sm:right-5 sm:top-[4.25rem]">
           <Button
             type="button"
@@ -525,8 +525,10 @@ function SplitPaneSurface(props: {
             aria-label={`Choose chat for the ${props.pane} split pane`}
             title="Choose chat"
             className={cn(
-              "pointer-events-auto transition-opacity",
-              !props.isFocused ? "opacity-0 group-hover:opacity-100" : "",
+              "transition-opacity",
+              props.isFocused
+                ? "pointer-events-auto opacity-100"
+                : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
             )}
             onClick={(event) => {
               event.stopPropagation();

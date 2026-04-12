@@ -18,19 +18,26 @@ function getDiffPanelHeaderRowClassName(mode: DiffPanelMode) {
 export function DiffPanelShell(props: {
   mode: DiffPanelMode;
   header: ReactNode;
+  headerAction?: ReactNode;
+  disableDragRegion?: boolean;
   children: ReactNode;
 }) {
-  const shouldUseDragRegion = isElectron && props.mode !== "sheet";
+  const shouldUseDragRegion = isElectron && props.mode !== "sheet" && !props.disableDragRegion;
 
   return (
     <div
       className={cn(
-        "flex h-full min-w-0 flex-col bg-background",
+        "relative flex h-full min-w-0 flex-col bg-background",
         props.mode === "inline"
           ? "w-[42vw] min-w-[360px] max-w-[560px] shrink-0 border-l border-border"
           : "w-full",
       )}
     >
+      {props.headerAction ? (
+        <div className="absolute top-2 right-4 z-30 flex items-center [-webkit-app-region:no-drag]">
+          {props.headerAction}
+        </div>
+      ) : null}
       {shouldUseDragRegion ? (
         <div className={getDiffPanelHeaderRowClassName(props.mode)}>{props.header}</div>
       ) : (
