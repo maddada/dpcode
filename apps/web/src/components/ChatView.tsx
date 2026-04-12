@@ -67,6 +67,7 @@ import {
 } from "~/lib/providerDiscoveryReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
+import { buildRewindTurnCountByUserMessageId } from "~/chatRewind";
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import {
@@ -264,6 +265,7 @@ import {
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerSlashCommands } from "../hooks/useComposerSlashCommands";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { VSMUX_FOCUS_COMPOSER_EVENT } from "../vsmuxEmbed";
 import { useProjectEditorActions } from "../hooks/useProjectEditorActions";
 import {
   canCreateThreadHandoff,
@@ -1626,8 +1628,7 @@ export default function ChatView({
       deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
     [activeThread?.proposedPlans, timelineMessages, workLogEntries],
   );
-  const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
-    useTurnDiffSummaries(activeThread);
+  const { turnDiffSummaries } = useTurnDiffSummaries(activeThread);
   const turnDiffSummaryByAssistantMessageId = useMemo(() => {
     const byMessageId = new Map<MessageId, TurnDiffSummary>();
     for (const summary of turnDiffSummaries) {
@@ -1636,38 +1637,10 @@ export default function ChatView({
     }
     return byMessageId;
   }, [turnDiffSummaries]);
-  const revertTurnCountByUserMessageId = useMemo(() => {
-    const byUserMessageId = new Map<MessageId, number>();
-    for (let index = 0; index < timelineEntries.length; index += 1) {
-      const entry = timelineEntries[index];
-      if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
-        continue;
-      }
-
-      for (let nextIndex = index + 1; nextIndex < timelineEntries.length; nextIndex += 1) {
-        const nextEntry = timelineEntries[nextIndex];
-        if (!nextEntry || nextEntry.kind !== "message") {
-          continue;
-        }
-        if (nextEntry.message.role === "user") {
-          break;
-        }
-        const summary = turnDiffSummaryByAssistantMessageId.get(nextEntry.message.id);
-        if (!summary) {
-          continue;
-        }
-        const turnCount =
-          summary.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[summary.turnId];
-        if (typeof turnCount !== "number") {
-          break;
-        }
-        byUserMessageId.set(entry.message.id, Math.max(0, turnCount - 1));
-        break;
-      }
-    }
-
-    return byUserMessageId;
-  }, [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId]);
+  const revertTurnCountByUserMessageId = useMemo(
+    () => buildRewindTurnCountByUserMessageId(timelineEntries),
+    [timelineEntries],
+  );
 
   const completionSummary = useMemo(() => {
     if (!latestTurnSettled) return null;
@@ -2137,6 +2110,18 @@ export default function ChatView({
   const focusComposer = useCallback(() => {
     composerEditorRef.current?.focusAtEnd();
   }, []);
+  useEffect(() => {
+    const handleFocusComposer = () => {
+      window.requestAnimationFrame(() => {
+        focusComposer();
+      });
+    };
+
+    window.addEventListener(VSMUX_FOCUS_COMPOSER_EVENT, handleFocusComposer);
+    return () => {
+      window.removeEventListener(VSMUX_FOCUS_COMPOSER_EVENT, handleFocusComposer);
+    };
+  }, [focusComposer]);
   const scheduleComposerFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
       focusComposer();
@@ -3903,14 +3888,15 @@ export default function ChatView({
       const api = readNativeApi();
       if (!api || !activeThread || isRevertingCheckpoint) return;
 
-      if (hasLiveTurn || isSendBusy || isConnecting) {
-        setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
+      if (hasLiveTurn || phase === "running" || isSendBusy || isConnecting) {
+        setThreadError(activeThread.id, "Interrupt the current turn before rewinding the thread.");
         return;
       }
       const confirmed = await api.dialogs.confirm(
         [
-          `Revert this thread to checkpoint ${turnCount}?`,
-          "This will discard newer messages and turn diffs in this thread.",
+          "Rewind this thread to before the selected message?",
+          "This will discard the selected message and all newer thread history.",
+          "When newer turns changed files, their workspace changes will also be reverted.",
           "This action cannot be undone.",
         ].join("\n"),
       );
@@ -5585,7 +5571,7 @@ export default function ChatView({
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-muted-foreground/40">
         {!isElectron && (
-          <header className="border-b border-border px-3 py-2 md:hidden">
+          <header className="border-b border-border px-3 py-2">
             <div className="flex items-center gap-2">
               <SidebarHeaderTrigger className="size-7 shrink-0" />
               <span className="text-sm font-medium text-foreground">Threads</span>

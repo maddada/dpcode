@@ -33,6 +33,7 @@ import { TaskCompletionNotifications } from "../notifications/taskCompletion";
 import { useWorkspaceStore, workspaceThreadId } from "../workspaceStore";
 import { useAppTypography } from "../hooks/useAppTypography";
 import { invalidateGitQueries } from "../lib/gitReactQuery";
+import { getVSmuxEmbedBootstrap } from "../vsmuxEmbed";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -354,23 +355,27 @@ function EventRouter() {
           return;
         }
 
-        if (!payload.bootstrapProjectId || !payload.bootstrapThreadId) {
+        if (payload.bootstrapProjectId) {
+          setProjectExpanded(payload.bootstrapProjectId, true);
+        }
+
+        const bootstrapThreadId = getVSmuxEmbedBootstrap()?.threadId ?? payload.bootstrapThreadId;
+        if (!bootstrapThreadId) {
           return;
         }
-        setProjectExpanded(payload.bootstrapProjectId, true);
 
         if (pathnameRef.current !== "/") {
           return;
         }
-        if (handledBootstrapThreadIdRef.current === payload.bootstrapThreadId) {
+        if (handledBootstrapThreadIdRef.current === bootstrapThreadId) {
           return;
         }
         await navigate({
           to: "/$threadId",
-          params: { threadId: payload.bootstrapThreadId },
+          params: { threadId: bootstrapThreadId },
           replace: true,
         });
-        handledBootstrapThreadIdRef.current = payload.bootstrapThreadId;
+        handledBootstrapThreadIdRef.current = bootstrapThreadId;
       })().catch(() => undefined);
     });
     // onServerConfigUpdated replays the latest cached value synchronously

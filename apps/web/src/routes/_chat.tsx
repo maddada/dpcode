@@ -23,6 +23,7 @@ import { useChatCodeFont } from "~/hooks/useChatCodeFont";
 import { useUIFont } from "~/hooks/useUIFont";
 import { cn } from "~/lib/utils";
 import { useProjectEditorStore } from "~/projectEditorStore";
+import { isVSmuxEmbed } from "../vsmuxEmbed";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
@@ -259,7 +260,7 @@ function ChatRouteLayout() {
   );
 
   return (
-    <SidebarProvider defaultOpen>
+    <SidebarProvider defaultOpen={!isVSmuxEmbed()}>
       <ChatRouteGlobalShortcuts />
       {side === "left" ? sidebarElement : null}
       <div className="relative min-h-dvh min-w-0 flex-1 overflow-hidden">
@@ -280,19 +281,14 @@ function ChatRouteLayout() {
 
 function PersistentProjectEditorLayer(props: { activeProjectEditorId: ProjectId | null }) {
   const editorsByProjectId = useProjectEditorStore((store) => store.editorsByProjectId);
-  const [mountedProjectEditorIds, setMountedProjectEditorIds] = useState<ProjectId[]>([]);
+  const [mountedProjectEditorId, setMountedProjectEditorId] = useState<ProjectId | null>(null);
 
   useEffect(() => {
     const activeProjectEditorId = props.activeProjectEditorId;
     if (!activeProjectEditorId) {
       return;
     }
-
-    setMountedProjectEditorIds((currentIds) =>
-      currentIds.includes(activeProjectEditorId)
-        ? currentIds
-        : [...currentIds, activeProjectEditorId],
-    );
+    setMountedProjectEditorId(activeProjectEditorId);
   }, [props.activeProjectEditorId]);
 
   const editorProjectIds = useMemo(
@@ -302,12 +298,14 @@ function PersistentProjectEditorLayer(props: { activeProjectEditorId: ProjectId 
       ) as ProjectId[],
     [editorsByProjectId],
   );
-  const visibleProjectEditorIds = useMemo(
-    () => mountedProjectEditorIds.filter((projectId) => editorProjectIds.includes(projectId)),
-    [editorProjectIds, mountedProjectEditorIds],
-  );
+  const visibleProjectEditorId = useMemo(() => {
+    if (!mountedProjectEditorId) {
+      return null;
+    }
+    return editorProjectIds.includes(mountedProjectEditorId) ? mountedProjectEditorId : null;
+  }, [editorProjectIds, mountedProjectEditorId]);
 
-  if (visibleProjectEditorIds.length === 0) {
+  if (!visibleProjectEditorId) {
     return null;
   }
 
@@ -318,21 +316,15 @@ function PersistentProjectEditorLayer(props: { activeProjectEditorId: ProjectId 
         !props.activeProjectEditorId && "pointer-events-none",
       )}
     >
-      {visibleProjectEditorIds.map((projectId) => {
-        const isActive = projectId === props.activeProjectEditorId;
-        return (
-          <div
-            key={projectId}
-            aria-hidden={!isActive}
-            className={cn(
-              "absolute inset-0 min-h-0 min-w-0 overflow-hidden",
-              !isActive && "hidden",
-            )}
-          >
-            <ProjectEditorView projectId={projectId as ProjectId} />
-          </div>
-        );
-      })}
+      <div
+        aria-hidden={visibleProjectEditorId !== props.activeProjectEditorId}
+        className={cn(
+          "absolute inset-0 min-h-0 min-w-0 overflow-hidden",
+          visibleProjectEditorId !== props.activeProjectEditorId && "pointer-events-none opacity-0",
+        )}
+      >
+        <ProjectEditorView projectId={visibleProjectEditorId} />
+      </div>
     </div>
   );
 }
