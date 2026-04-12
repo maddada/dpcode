@@ -656,39 +656,6 @@ function SortableProjectItem({
   );
 }
 
-function SidebarSegmentedPicker({
-  activeView,
-  onSelectView,
-}: {
-  activeView: "threads" | "workspace";
-  onSelectView: (view: "threads" | "workspace") => void;
-}) {
-  return (
-    <div className="px-3 pb-2.5">
-      <div className="inline-flex w-full rounded-md bg-muted/40 p-0.5">
-        {(["threads", "workspace"] as const).map((view) => {
-          const active = activeView === view;
-          return (
-            <button
-              key={view}
-              type="button"
-              className={cn(
-                "flex-1 rounded-sm px-2.5 py-1 text-[11.5px] font-medium tracking-tight transition-colors",
-                active
-                  ? "bg-background dark:bg-neutral-800 text-foreground shadow-xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => onSelectView(view)}
-            >
-              {view === "threads" ? "Threads" : "Workspace"}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function SortableWorkspaceItem({
   workspaceId,
   children,
@@ -765,7 +732,10 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const isOnSettings = useLocation({ select: (loc) => loc.pathname === "/settings" });
-  const isOnWorkspace = pathname.startsWith("/workspace");
+  const isOnPlugins = useLocation({ select: (loc) => loc.pathname === "/plugins" });
+  // Keep the sidebar locked to thread mode for now while preserving the
+  // underlying workspace model to stay close to upstream.
+  const isOnWorkspace = false;
   const { settings: appSettings, updateSettings } = useAppSettings();
   const { handleNewThread } = useHandleNewThread();
   const { openProjectEditor } = useProjectEditorActions();
@@ -1206,6 +1176,27 @@ export default function Sidebar() {
     [openExistingProjectFromSnapshot, syncServerReadModel, waitForProjectWorkspaceRootInSnapshot],
   );
 
+  const navigateBackFromSettings = useCallback(() => {
+    if (activeSidebarThreadId) {
+      activateThread(activeSidebarThreadId);
+      return;
+    }
+
+    const latestThread = sortThreadsForSidebar(threads, appSettings.sidebarThreadSortOrder)[0];
+    if (latestThread) {
+      activateThread(latestThread.id);
+      return;
+    }
+
+    void navigate({ to: "/", replace: true });
+  }, [
+    activateThread,
+    activeSidebarThreadId,
+    appSettings.sidebarThreadSortOrder,
+    navigate,
+    threads,
+  ]);
+
   const handleOpenProjectFromSearch = useCallback(
     (projectId: string) => {
       const typedProjectId = ProjectId.makeUnsafe(projectId);
@@ -1260,21 +1251,6 @@ export default function Sidebar() {
       });
     },
     [navigate],
-  );
-
-  const handleSidebarViewChange = useCallback(
-    (view: "threads" | "workspace") => {
-      if (view === "workspace") {
-        const fallbackWorkspaceId = workspacePages[0]?.id;
-        if (!fallbackWorkspaceId) {
-          return;
-        }
-        navigateToWorkspace(routeWorkspaceId ?? fallbackWorkspaceId);
-        return;
-      }
-      void navigate({ to: "/" });
-    },
-    [navigate, navigateToWorkspace, routeWorkspaceId, workspacePages],
   );
 
   const handleCreateWorkspace = useCallback(() => {
@@ -3425,29 +3401,6 @@ export default function Sidebar() {
             <TooltipTrigger
               render={
                 <SidebarMenuAction
-                  render={<button type="button" aria-label={`Open ${project.name} editor`} />}
-                  showOnHover
-                  className="top-1 right-[1.75rem] size-5 rounded-md p-0 text-muted-foreground/60 hover:bg-white/8 hover:text-foreground"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void openProjectEditor(project.id);
-                  }}
-                >
-                  <VSCodeEditorIcon className="size-3.5" />
-                </SidebarMenuAction>
-              }
-            />
-            <TooltipPopup side="top">
-              {projectEditorShortcutLabel
-                ? `Open editor (${projectEditorShortcutLabel})`
-                : "Open editor"}
-            </TooltipPopup>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <SidebarMenuAction
                   render={
                     <button
                       type="button"
@@ -4471,10 +4424,10 @@ export default function Sidebar() {
                 <SidebarMenuButton
                   size="default"
                   className="h-8 flex-1 gap-2.5 rounded-lg px-2 text-[length:var(--app-font-size-ui,12px)] font-normal text-muted-foreground/72 hover:bg-accent/55 hover:text-foreground"
-                  isActive
+                  onClick={navigateBackFromSettings}
                 >
-                  <SettingsIcon className="size-[15px]" />
-                  <span>Settings</span>
+                  <ArrowLeftIcon className="size-[15px]" />
+                  <span>Back</span>
                 </SidebarMenuButton>
               ) : (
                 <SidebarMenuButton

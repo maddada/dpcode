@@ -1,4 +1,5 @@
 import { DEFAULT_MODEL_BY_PROVIDER, type ProjectId, type ThreadId } from "@t3tools/contracts";
+import { type TerminalActivityState } from "@t3tools/shared/terminalThreads";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo } from "react";
@@ -326,6 +327,7 @@ export function ProjectEditorView({ projectId }: { projectId: ProjectId }) {
       terminalLabelsById: terminalState.terminalLabelsById,
       terminalTitleOverridesById: terminalState.terminalTitleOverridesById,
       terminalCliKindsById: terminalState.terminalCliKindsById,
+      terminalAttentionStatesById: terminalState.terminalAttentionStatesById,
       runningTerminalIds: terminalState.runningTerminalIds,
       activeTerminalId: terminalState.activeTerminalId,
       terminalGroups: terminalState.terminalGroups,
@@ -348,8 +350,10 @@ export function ProjectEditorView({ projectId }: { projectId: ProjectId }) {
         terminalId: string,
         metadata: { cliKind: "codex" | "claude" | null; label: string },
       ) => setTerminalMetadata(terminalScopeThreadId, terminalId, metadata),
-      onTerminalActivityChange: (terminalId: string, isRunning: boolean) =>
-        setTerminalActivity(terminalScopeThreadId, terminalId, isRunning),
+      onTerminalActivityChange: (
+        terminalId: string,
+        activity: { agentState: TerminalActivityState | null; hasRunningSubprocess: boolean },
+      ) => setTerminalActivity(terminalScopeThreadId, terminalId, activity),
       onAddTerminalContext: () => {},
     }),
     [
@@ -368,6 +372,7 @@ export function ProjectEditorView({ projectId }: { projectId: ProjectId }) {
       targetCwd,
       terminalState.activeTerminalGroupId,
       terminalState.activeTerminalId,
+      terminalState.terminalAttentionStatesById,
       terminalState.runningTerminalIds,
       terminalState.terminalCliKindsById,
       terminalState.terminalGroups,
@@ -408,7 +413,7 @@ export function ProjectEditorView({ projectId }: { projectId: ProjectId }) {
               onToggleTerminal={toggleTerminal}
             />
           </header>
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-[#151515]">
+          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[#151515]">
             {editorSessionQuery.isPending ? (
               <div className="flex h-full items-center justify-center bg-[#151515] text-sm text-muted-foreground">
                 Starting editor...

@@ -43,7 +43,7 @@ export function ProjectEditorHeader({
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-        <div className="shrink-0 md:hidden">
+        <div className="shrink-0">
           <SidebarTrigger className="size-7 shrink-0" />
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-2">

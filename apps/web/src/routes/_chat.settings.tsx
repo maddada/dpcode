@@ -37,7 +37,7 @@ import {
 } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { toastManager } from "../components/ui/toast";
-import { SidebarHeaderTrigger, SidebarInset } from "../components/ui/sidebar";
+import { SidebarHeaderTrigger, SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
@@ -2085,7 +2085,7 @@ function SettingsRouteView() {
         ) : (
           <header className="border-b border-border/70 px-3 py-2 sm:px-5">
             <div className="flex items-center gap-2">
-              <SidebarHeaderTrigger className="size-7 shrink-0" />
+              <SidebarTrigger className="size-7 shrink-0" />
               <span className="text-sm font-medium text-foreground">Settings</span>
               <div className="ms-auto flex items-center gap-2">
                 <Button
