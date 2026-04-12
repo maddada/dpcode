@@ -8,6 +8,7 @@ export type VSmuxEmbedBootstrap = {
 };
 
 export const VSMUX_FOCUS_COMPOSER_EVENT = "vsmux:focus-composer";
+const VSMUX_RETURN_THREAD_ID_KEY = "vsmux:return-thread-id";
 
 declare global {
   interface Window {
@@ -29,6 +30,24 @@ export function getVSmuxEmbedBootstrap(): VSmuxEmbedBootstrap | undefined {
 
 export function isVSmuxEmbed(): boolean {
   return getVSmuxEmbedBootstrap()?.embedMode === "vsmux-mobile";
+}
+
+export function rememberVSmuxReturnThreadId(threadId: string | null | undefined): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (!threadId) {
+    window.sessionStorage.removeItem(VSMUX_RETURN_THREAD_ID_KEY);
+    return;
+  }
+  window.sessionStorage.setItem(VSMUX_RETURN_THREAD_ID_KEY, threadId);
+}
+
+export function getRememberedVSmuxReturnThreadId(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  return window.sessionStorage.getItem(VSMUX_RETURN_THREAD_ID_KEY) ?? undefined;
 }
 
 export function installVSmuxEmbedBridge(): void {
