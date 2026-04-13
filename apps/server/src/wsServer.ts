@@ -7,7 +7,6 @@
  * @module Server
  */
 import http from "node:http";
-import { realpathSync } from "node:fs";
 import type { Duplex } from "node:stream";
 
 import Mime from "@effect/platform-node/Mime";
@@ -16,7 +15,6 @@ import {
   DEFAULT_TERMINAL_ID,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   type ClientOrchestrationCommand,
-  type OrchestrationReadModel,
   type OrchestrationCommand,
   ORCHESTRATION_WS_CHANNELS,
   ORCHESTRATION_WS_METHODS,
@@ -84,7 +82,6 @@ import { expandHomePath } from "./os-jank.ts";
 import { makeServerPushBus } from "./wsServer/pushBus.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@t3tools/shared/schemaJson";
-import { workspaceRootsEqual } from "@t3tools/shared/threadWorkspace";
 import { ProjectEditorRuntimeManager } from "./projectEditorRuntime";
 import { TerminalThreadTitleTracker } from "./terminal/terminalThreadTitleTracker";
 
@@ -159,64 +156,6 @@ function rejectUpgrade(socket: Duplex, statusCode: number, message: string): voi
       `Content-Length: ${Buffer.byteLength(message)}\r\n` +
       "\r\n" +
       message,
-  );
-}
-
-type BootstrapSnapshotThread = OrchestrationReadModel["threads"][number];
-
-function toSortableBootstrapTimestamp(iso: string | undefined): number {
-  if (!iso) {
-    return Number.NEGATIVE_INFINITY;
-  }
-  const timestamp = Date.parse(iso);
-  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
-}
-
-function getLatestBootstrapUserMessageTimestamp(thread: BootstrapSnapshotThread): number {
-  let latestUserMessageTimestamp = Number.NEGATIVE_INFINITY;
-
-  for (const message of thread.messages) {
-    if (message.role !== "user") {
-      continue;
-    }
-    latestUserMessageTimestamp = Math.max(
-      latestUserMessageTimestamp,
-      toSortableBootstrapTimestamp(message.createdAt),
-    );
-  }
-
-  if (latestUserMessageTimestamp !== Number.NEGATIVE_INFINITY) {
-    return latestUserMessageTimestamp;
-  }
-
-  return toSortableBootstrapTimestamp(thread.updatedAt ?? thread.createdAt);
-}
-
-function getMostRecentBootstrapThread(
-  snapshot: OrchestrationReadModel,
-): BootstrapSnapshotThread | null {
-  const activeProjectIds = new Set(
-    snapshot.projects.filter((project) => project.deletedAt === null).map((project) => project.id),
-  );
-
-  return (
-    snapshot.threads
-      .filter(
-        (thread) =>
-          thread.deletedAt === null &&
-          (thread.archivedAt ?? null) === null &&
-          activeProjectIds.has(thread.projectId),
-      )
-      .toSorted((left, right) => {
-        const rightTimestamp = getLatestBootstrapUserMessageTimestamp(right);
-        const leftTimestamp = getLatestBootstrapUserMessageTimestamp(left);
-        const byTimestamp =
-          rightTimestamp === leftTimestamp ? 0 : rightTimestamp > leftTimestamp ? 1 : -1;
-        if (byTimestamp !== 0) {
-          return byTimestamp;
-        }
-        return right.id.localeCompare(left.id);
-      })[0] ?? null
   );
 }
 
@@ -516,7 +455,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     ).toSorted(
       (left, right) =>
         left.workspaceRoot.localeCompare(right.workspaceRoot) ||
-        left.path.localeCompare(right.path),
+      left.path.localeCompare(right.path),
     );
   });
 
@@ -550,17 +489,35 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const normalizeDispatchCommand = Effect.fnUntraced(function* (input: {
     readonly command: ClientOrchestrationCommand;
   }) {
+    const normalizeProjectWorkspaceRoot = Effect.fnUntraced(function* (workspaceRoot: string) {
+      const normalizedWorkspaceRoot = path.resolve(yield* expandHomePath(workspaceRoot.trim()));
+      const workspaceStat = yield* fileSystem
+        .stat(normalizedWorkspaceRoot)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (!workspaceStat) {
+        return yield* new RouteRequestError({
+          message: `Project directory does not exist: ${normalizedWorkspaceRoot}`,
+        });
+      }
+      if (workspaceStat.type !== "Directory") {
+        return yield* new RouteRequestError({
+          message: `Project path is not a directory: ${normalizedWorkspaceRoot}`,
+        });
+      }
+      return normalizedWorkspaceRoot;
+    });
+
     if (input.command.type === "project.create") {
       return {
         ...input.command,
-        workspaceRoot: yield* canonicalizeProjectWorkspaceRoot(input.command.workspaceRoot),
+        workspaceRoot: yield* normalizeProjectWorkspaceRoot(input.command.workspaceRoot),
       } satisfies OrchestrationCommand;
     }
 
     if (input.command.type === "project.meta.update" && input.command.workspaceRoot !== undefined) {
       return {
         ...input.command,
-        workspaceRoot: yield* canonicalizeProjectWorkspaceRoot(input.command.workspaceRoot),
+        workspaceRoot: yield* normalizeProjectWorkspaceRoot(input.command.workspaceRoot),
       } satisfies OrchestrationCommand;
     }
 
@@ -672,7 +629,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     });
   });
 
-  // HTTP server — serves lightweight health checks, assets, and the web app shell.
+  // HTTP server — serves static files or redirects to Vite dev server
   const httpServer = http.createServer((req, res) => {
     const respond = (
       statusCode: number,
@@ -914,15 +871,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
   if (autoBootstrapProjectFromCwd) {
     yield* Effect.gen(function* () {
-      const canonicalCwd = yield* canonicalizeProjectWorkspaceRoot(cwd);
       const snapshot = yield* projectionReadModelQuery.getSnapshot();
-      const mostRecentThread = getMostRecentBootstrapThread(snapshot);
       const existingProject = snapshot.projects.find(
-        (project) =>
-          project.deletedAt === null &&
-          workspaceRootsEqual(project.workspaceRoot, canonicalCwd, {
-            platform: process.platform,
-          }),
+        (project) => project.workspaceRoot === cwd && project.deletedAt === null,
       );
       let bootstrapProjectId: ProjectId;
       let bootstrapProjectDefaultModelSelection;
@@ -940,7 +891,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           commandId: CommandId.makeUnsafe(crypto.randomUUID()),
           projectId: bootstrapProjectId,
           title: bootstrapProjectTitle,
-          workspaceRoot: canonicalCwd,
+          workspaceRoot: cwd,
           defaultModelSelection: bootstrapProjectDefaultModelSelection,
           createdAt,
         });
@@ -952,17 +903,8 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         };
       }
 
-      if (mostRecentThread) {
-        welcomeBootstrapProjectId = mostRecentThread.projectId;
-        welcomeBootstrapThreadId = mostRecentThread.id;
-        return;
-      }
-
       const existingThread = snapshot.threads.find(
-        (thread) =>
-          thread.projectId === bootstrapProjectId &&
-          thread.deletedAt === null &&
-          (thread.archivedAt ?? null) === null,
+        (thread) => thread.projectId === bootstrapProjectId && thread.deletedAt === null,
       );
       if (!existingThread) {
         const createdAt = new Date().toISOString();
@@ -1057,11 +999,6 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     switch (request.body._tag) {
       case ORCHESTRATION_WS_METHODS.getSnapshot:
         return yield* projectionReadModelQuery.getSnapshot();
-
-      case ORCHESTRATION_WS_METHODS.repairState: {
-        yield* orchestrationEngine.repairState();
-        return yield* projectionReadModelQuery.getSnapshot();
-      }
 
       case ORCHESTRATION_WS_METHODS.dispatchCommand: {
         const { command } = request.body;
@@ -1161,16 +1098,6 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.gitStatus: {
         const body = stripRequestTag(request.body);
         return yield* gitManager.status(body);
-      }
-
-      case WS_METHODS.gitReadWorkingTreeDiff: {
-        const body = stripRequestTag(request.body);
-        return yield* gitManager.readWorkingTreeDiff(body);
-      }
-
-      case WS_METHODS.gitSummarizeDiff: {
-        const body = stripRequestTag(request.body);
-        return yield* gitManager.summarizeDiff(body);
       }
 
       case WS_METHODS.gitPull: {

@@ -8,10 +8,12 @@ export type VSmuxEmbedBootstrap = {
 };
 
 export const VSMUX_FOCUS_COMPOSER_EVENT = "vsmux:focus-composer";
-const VSMUX_RETURN_THREAD_ID_KEY = "vsmux:return-thread-id";
 
 declare global {
   interface Window {
+    __VSMUX_T3_ACTIVE_THREAD_ID__?: string;
+    __VSMUX_T3_ACTIVE_THREAD_TITLE__?: string;
+    __VSMUX_T3_COMPOSER_FOCUS_ENABLED__?: boolean;
     __VSMUX_T3_BOOTSTRAP__?: VSmuxEmbedBootstrap;
   }
 }
@@ -32,22 +34,42 @@ export function isVSmuxEmbed(): boolean {
   return getVSmuxEmbedBootstrap()?.embedMode === "vsmux-mobile";
 }
 
+export function canVSmuxComposerTakeFocus(): boolean {
+  if (typeof window === "undefined" || !isVSmuxEmbed()) {
+    return true;
+  }
+
+  return window.__VSMUX_T3_COMPOSER_FOCUS_ENABLED__ === true;
+}
+
 export function rememberVSmuxReturnThreadId(threadId: string | null | undefined): void {
   if (typeof window === "undefined") {
     return;
   }
-  if (!threadId) {
-    window.sessionStorage.removeItem(VSMUX_RETURN_THREAD_ID_KEY);
+  const bootstrap = getVSmuxEmbedBootstrap();
+  if (!bootstrap) {
     return;
   }
-  window.sessionStorage.setItem(VSMUX_RETURN_THREAD_ID_KEY, threadId);
+  const storageKey = getVSmuxReturnThreadStorageKey(bootstrap.sessionId);
+  if (!threadId) {
+    delete window.__VSMUX_T3_ACTIVE_THREAD_ID__;
+    window.sessionStorage.removeItem(storageKey);
+    return;
+  }
+  bootstrap.threadId = threadId;
+  window.__VSMUX_T3_ACTIVE_THREAD_ID__ = threadId;
+  window.sessionStorage.setItem(storageKey, threadId);
 }
 
 export function getRememberedVSmuxReturnThreadId(): string | undefined {
   if (typeof window === "undefined") {
     return undefined;
   }
-  return window.sessionStorage.getItem(VSMUX_RETURN_THREAD_ID_KEY) ?? undefined;
+  const bootstrap = getVSmuxEmbedBootstrap();
+  if (!bootstrap) {
+    return undefined;
+  }
+  return window.sessionStorage.getItem(getVSmuxReturnThreadStorageKey(bootstrap.sessionId)) ?? undefined;
 }
 
 export function installVSmuxEmbedBridge(): void {
@@ -67,6 +89,37 @@ export function installVSmuxEmbedBridge(): void {
   vscodeApi?.postMessage({ type: "vsmuxReady" });
 }
 
+export function notifyVSmuxActiveThread(input: {
+  threadId: string;
+  title?: string | null;
+}): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const bootstrap = getVSmuxEmbedBootstrap();
+  if (!bootstrap) {
+    return;
+  }
+
+  rememberVSmuxReturnThreadId(input.threadId);
+  if (input.title && input.title.trim().length > 0) {
+    window.__VSMUX_T3_ACTIVE_THREAD_TITLE__ = input.title.trim();
+  } else {
+    delete window.__VSMUX_T3_ACTIVE_THREAD_TITLE__;
+  }
+
+  window.parent?.postMessage(
+    {
+      sessionId: bootstrap.sessionId,
+      threadId: input.threadId,
+      title: input.title ?? undefined,
+      type: "vsmuxT3ThreadChanged",
+    },
+    "*",
+  );
+}
+
 function isHostFocusComposerMessage(message: unknown): message is { type: "focusComposer" } {
   return (
     typeof message === "object" &&
@@ -74,4 +127,8 @@ function isHostFocusComposerMessage(message: unknown): message is { type: "focus
     "type" in message &&
     message.type === "focusComposer"
   );
+}
+
+function getVSmuxReturnThreadStorageKey(sessionId: string): string {
+  return `vsmux:return-thread-id:${sessionId}`;
 }

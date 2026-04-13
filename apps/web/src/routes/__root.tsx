@@ -4,10 +4,9 @@ import {
   Outlet,
   createRootRouteWithContext,
   type ErrorComponentProps,
-  useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Throttler } from "@tanstack/react-pacer";
 
@@ -33,7 +32,10 @@ import { TaskCompletionNotifications } from "../notifications/taskCompletion";
 import { useWorkspaceStore, workspaceThreadId } from "../workspaceStore";
 import { useAppTypography } from "../hooks/useAppTypography";
 import { invalidateGitQueries } from "../lib/gitReactQuery";
-import { getVSmuxEmbedBootstrap } from "../vsmuxEmbed";
+import {
+  notifyVSmuxActiveThread,
+  rememberVSmuxReturnThreadId,
+} from "../vsmuxEmbed";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -46,8 +48,6 @@ export const Route = createRootRouteWithContext<{
 });
 
 function RootRouteView() {
-  useAppTypography();
-
   if (!readNativeApi()) {
     return (
       <div className="flex h-screen flex-col bg-background text-foreground">
@@ -190,6 +190,7 @@ function coalesceOrchestrationUiEvents(
 function EventRouter() {
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
   const applyOrchestrationEvents = useStore((store) => store.applyOrchestrationEvents);
+  const threads = useStore((store) => store.threads);
   const setProjectExpanded = useStore((store) => store.setProjectExpanded);
   const removeOrphanedTerminalStates = useTerminalStateStore(
     (store) => store.removeOrphanedTerminalStates,
@@ -197,12 +198,24 @@ function EventRouter() {
   const setWorkspaceHomeDir = useWorkspaceStore((store) => store.setHomeDir);
   const workspacePages = useWorkspaceStore((store) => store.workspacePages);
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const pathnameRef = useRef(pathname);
-  const handledBootstrapThreadIdRef = useRef<string | null>(null);
+  const currentRouteThreadId = getThreadIdFromPathname(pathname);
+  const currentRouteThreadTitle =
+    currentRouteThreadId != null
+      ? (threads.find((thread) => thread.id === currentRouteThreadId)?.title ?? null)
+      : null;
 
-  pathnameRef.current = pathname;
+  useEffect(() => {
+    if (!currentRouteThreadId) {
+      return;
+    }
+
+    rememberVSmuxReturnThreadId(currentRouteThreadId);
+    notifyVSmuxActiveThread({
+      threadId: currentRouteThreadId,
+      title: currentRouteThreadTitle,
+    });
+  }, [currentRouteThreadId, currentRouteThreadTitle]);
 
   useEffect(() => {
     const api = readNativeApi();
@@ -215,46 +228,21 @@ function EventRouter() {
     let needsGitInvalidation = false;
     let pendingDomainEvents: OrchestrationEvent[] = [];
 
-    const removeOrphanedTerminalsForCurrentState = () => {
+    const flushSnapshotSync = async (): Promise<void> => {
+      const snapshot = await api.orchestration.getSnapshot();
+      if (disposed) return;
+      latestSequence = Math.max(latestSequence, snapshot.snapshotSequence);
+      syncServerReadModel(snapshot);
+      clearPromotedDraftThreads(new Set(snapshot.threads.map((t) => t.id)));
       const draftThreadIds = Object.keys(
         useComposerDraftStore.getState().draftThreadsByThreadId,
       ) as ThreadId[];
       const activeThreadIds = collectActiveTerminalThreadIds({
-        snapshotThreads: useStore.getState().threads.map((thread) => ({
-          id: thread.id,
-          deletedAt: null,
-          archivedAt: thread.archivedAt ?? null,
-        })),
+        snapshotThreads: snapshot.threads,
         draftThreadIds,
         retainedThreadIds: workspacePages.map((workspace) => workspaceThreadId(workspace.id)),
       });
       removeOrphanedTerminalStates(activeThreadIds);
-    };
-
-    const flushSnapshotSync = async (): Promise<void> => {
-      let snapshot = await api.orchestration.getSnapshot();
-      if (disposed) return;
-      // Domain events can reach the client before the projection snapshot catches up.
-      // Wait briefly for the snapshot cursor so late turn-diff summaries do not disappear
-      // until the next user message or a manual refresh.
-      for (
-        let attempt = 1;
-        snapshot.snapshotSequence < latestSequence && attempt < SNAPSHOT_CATCH_UP_MAX_ATTEMPTS;
-        attempt += 1
-      ) {
-        await wait(SNAPSHOT_CATCH_UP_DELAY_MS * attempt);
-        if (disposed) return;
-        snapshot = await api.orchestration.getSnapshot();
-        if (disposed) return;
-      }
-      if (snapshot.snapshotSequence < latestSequence) {
-        pending = true;
-        return;
-      }
-      latestSequence = Math.max(latestSequence, snapshot.snapshotSequence);
-      syncServerReadModel(snapshot);
-      clearPromotedDraftThreads(new Set(snapshot.threads.map((t) => t.id)));
-      removeOrphanedTerminalsForCurrentState();
       if (pending) {
         pending = false;
         await flushSnapshotSync();
@@ -271,13 +259,9 @@ function EventRouter() {
       try {
         await flushSnapshotSync();
       } catch {
-        // Keep prior state and wait for the next domain event to trigger a resync.
+        // Keep prior state and wait for next domain event to trigger a resync.
       }
       syncing = false;
-      if (pending) {
-        pending = false;
-        void syncSnapshot();
-      }
     };
 
     const domainEventFlushThrottler = new Throttler(
@@ -358,24 +342,6 @@ function EventRouter() {
         if (payload.bootstrapProjectId) {
           setProjectExpanded(payload.bootstrapProjectId, true);
         }
-
-        const bootstrapThreadId = getVSmuxEmbedBootstrap()?.threadId ?? payload.bootstrapThreadId;
-        if (!bootstrapThreadId) {
-          return;
-        }
-
-        if (pathnameRef.current !== "/") {
-          return;
-        }
-        if (handledBootstrapThreadIdRef.current === bootstrapThreadId) {
-          return;
-        }
-        await navigate({
-          to: "/$threadId",
-          params: { threadId: bootstrapThreadId },
-          replace: true,
-        });
-        handledBootstrapThreadIdRef.current = bootstrapThreadId;
       })().catch(() => undefined);
     });
     // onServerConfigUpdated replays the latest cached value synchronously
@@ -447,7 +413,6 @@ function EventRouter() {
     };
   }, [
     applyOrchestrationEvents,
-    navigate,
     queryClient,
     removeOrphanedTerminalStates,
     setProjectExpanded,
@@ -462,4 +427,21 @@ function EventRouter() {
 function DesktopProjectBootstrap() {
   // Desktop hydration runs through EventRouter project + orchestration sync.
   return null;
+}
+
+function getThreadIdFromPathname(pathname: string): string | undefined {
+  for (const segment of pathname.split("/").map((entry) => entry.trim())) {
+    if (!segment || segment === "settings" || segment === "_chat") {
+      continue;
+    }
+
+    const decoded = decodeURIComponent(segment);
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decoded)
+    ) {
+      return decoded;
+    }
+  }
+
+  return undefined;
 }

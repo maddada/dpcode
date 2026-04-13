@@ -9,7 +9,7 @@ import {
   type ThreadId as ThreadIdType,
   type TurnId,
 } from "@t3tools/contracts";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, retainSearchParams, useNavigate } from "@tanstack/react-router";
 import {
   Suspense,
   lazy,
@@ -17,7 +17,6 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -52,9 +51,7 @@ import {
   type SplitViewPanePanelState,
   useSplitViewStore,
 } from "../splitViewStore";
-import { selectSingleChatPanelState, useSingleChatPanelStore } from "../singleChatPanelStore";
 import { useStore } from "../store";
-import { createThreadExistsSelector, createThreadProjectIdSelector } from "../storeSelectors";
 import { Button } from "../components/ui/button";
 import {
   Dialog,
@@ -69,6 +66,7 @@ import { Sheet, SheetPopup } from "../components/ui/sheet";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { cn } from "~/lib/utils";
 import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "~/components/ui/sidebar";
+import { notifyVSmuxActiveThread } from "../vsmuxEmbed";
 
 const DiffPanel = lazy(() => import("../components/DiffPanel"));
 const DIFF_INLINE_LAYOUT_MEDIA_QUERY = "(max-width: 1180px)";
@@ -120,7 +118,6 @@ const LazyDiffPanel = (props: {
   onUpdatePanelState?: (
     patch: Partial<Pick<SplitViewPanePanelState, "panel" | "diffTurnId" | "diffFilePath">>,
   ) => void;
-  onClosePanel?: () => void;
 }) => {
   return (
     <DiffWorkerPoolProvider>
@@ -130,7 +127,6 @@ const LazyDiffPanel = (props: {
           {...(props.threadId !== undefined ? { threadId: props.threadId } : {})}
           {...(props.panelState ? { panelState: props.panelState } : {})}
           {...(props.onUpdatePanelState ? { onUpdatePanelState: props.onUpdatePanelState } : {})}
-          {...(props.onClosePanel ? { onClosePanel: props.onClosePanel } : {})}
         />
       </Suspense>
     </DiffWorkerPoolProvider>
@@ -265,7 +261,6 @@ const PanePanelInlineSidebar = (props: {
             <LazyDiffPanel
               mode="sidebar"
               threadId={threadId}
-              onClosePanel={onClosePanel}
               {...(panelState ? { panelState } : {})}
               {...(onUpdatePanelState ? { onUpdatePanelState } : {})}
             />
@@ -380,7 +375,6 @@ function SplitPaneEmbeddedPanel(props: {
         <LazyDiffPanel
           mode="sidebar"
           threadId={props.threadId}
-          onClosePanel={props.onClosePanel}
           panelState={props.panelState}
           onUpdatePanelState={props.onUpdatePanelState}
         />
@@ -995,41 +989,29 @@ function SingleChatSurface(props: {
   const navigate = useNavigate();
   const shouldUseDiffSheet = useMediaQuery(DIFF_INLINE_LAYOUT_MEDIA_QUERY);
   const createSplitView = useSplitViewStore((store) => store.createFromThread);
-  const panelState = useSingleChatPanelStore(selectSingleChatPanelState(props.threadId));
-  const setThreadPanelState = useSingleChatPanelStore((store) => store.setThreadPanelState);
-  const activePanel = panelState.panel;
-  const panelOpen = activePanel !== null;
-  const hasBootstrappedRoutePanelRef = useRef(false);
-  const updatePanelState = useCallback(
-    (patch: Partial<Pick<SplitViewPanePanelState, "panel" | "diffTurnId" | "diffFilePath">>) => {
-      const nextPanel = patch.panel ?? panelState.panel;
-      setThreadPanelState(props.threadId, {
-        ...patch,
-        hasOpenedPanel: panelState.hasOpenedPanel || nextPanel !== null,
-        lastOpenPanel:
-          patch.panel === "browser" || patch.panel === "diff"
-            ? patch.panel
-            : panelState.lastOpenPanel,
-      });
-    },
-    [
-      panelState.hasOpenedPanel,
-      panelState.lastOpenPanel,
-      panelState.panel,
-      props.threadId,
-      setThreadPanelState,
-    ],
-  );
+  const activePanel = props.search.panel;
+  const panelOpen = activePanel !== undefined;
+  const [hasOpenedPanel, setHasOpenedPanel] = useState(panelOpen);
+  const [lastOpenPanel, setLastOpenPanel] = useState<ChatRightPanel>(activePanel ?? "browser");
   const closePanel = useCallback(() => {
-    updatePanelState({ panel: null });
-  }, [updatePanelState]);
-  const openPanel = useCallback(() => {
-    updatePanelState({
-      panel: panelState.lastOpenPanel,
-      diffTurnId: panelState.lastOpenPanel === "diff" ? panelState.diffTurnId : null,
-      diffFilePath: panelState.lastOpenPanel === "diff" ? panelState.diffFilePath : null,
+    void navigate({
+      to: "/$threadId",
+      params: { threadId: props.threadId },
+      search: (previous) => ({ ...stripDiffSearchParams(previous), panel: undefined }),
     });
-  }, [panelState.diffFilePath, panelState.diffTurnId, panelState.lastOpenPanel, updatePanelState]);
+  }, [navigate, props.threadId]);
+  const openPanel = useCallback(() => {
+    void navigate({
+      to: "/$threadId",
+      params: { threadId: props.threadId },
+      search: (previous) => {
+        const rest = stripDiffSearchParams(previous);
+        return lastOpenPanel === "browser"
+          ? { ...rest, panel: "browser" }
+          : { ...rest, panel: "diff", diff: "1" };
+      },
+    });
+  }, [lastOpenPanel, navigate, props.threadId]);
   const handleSplitSurface = useCallback(() => {
     if (!props.projectId) return;
     const splitViewId = createSplitView({
@@ -1045,36 +1027,16 @@ function SingleChatSurface(props: {
   }, [createSplitView, navigate, props.projectId, props.threadId]);
 
   useEffect(() => {
-    if (
-      hasBootstrappedRoutePanelRef.current ||
-      (props.search.panel === undefined &&
-        props.search.diffTurnId === undefined &&
-        props.search.diffFilePath === undefined)
-    ) {
-      return;
+    if (panelOpen) {
+      setHasOpenedPanel(true);
     }
+  }, [panelOpen]);
 
-    hasBootstrappedRoutePanelRef.current = true;
-    updatePanelState({
-      panel: props.search.panel ?? (props.search.diff ? "diff" : null),
-      diffTurnId: props.search.diffTurnId ?? null,
-      diffFilePath: props.search.diffFilePath ?? null,
-    });
-    void navigate({
-      to: "/$threadId",
-      params: { threadId: props.threadId },
-      replace: true,
-      search: (previous) => stripDiffSearchParams(previous),
-    });
-  }, [
-    navigate,
-    props.search.diff,
-    props.search.diffFilePath,
-    props.search.diffTurnId,
-    props.search.panel,
-    props.threadId,
-    updatePanelState,
-  ]);
+  useEffect(() => {
+    if (activePanel) {
+      setLastOpenPanel(activePanel);
+    }
+  }, [activePanel]);
 
   useEffect(() => {
     const onMenuAction = window.desktopBridge?.onMenuAction;
@@ -1084,19 +1046,25 @@ function SingleChatSurface(props: {
 
     const unsubscribe = onMenuAction((action) => {
       if (action !== "toggle-browser") return;
-      updatePanelState({
-        panel: activePanel === "browser" ? null : "browser",
-        diffTurnId: null,
-        diffFilePath: null,
+      void navigate({
+        to: "/$threadId",
+        params: { threadId: props.threadId },
+        replace: true,
+        search: (previous) => {
+          const rest = stripDiffSearchParams(previous);
+          return activePanel === "browser"
+            ? { ...rest, panel: undefined }
+            : { ...rest, panel: "browser" };
+        },
       });
     });
 
     return () => {
       unsubscribe?.();
     };
-  }, [activePanel, props.threadId, updatePanelState]);
+  }, [activePanel, navigate, props.threadId]);
 
-  const shouldRenderPanelContent = activePanel !== null && (panelOpen || panelState.hasOpenedPanel);
+  const shouldRenderPanelContent = activePanel !== undefined && (panelOpen || hasOpenedPanel);
 
   if (!shouldUseDiffSheet) {
     return (
@@ -1105,26 +1073,6 @@ function SingleChatSurface(props: {
           <ChatView
             key={props.threadId}
             threadId={props.threadId}
-            panelState={panelState}
-            onToggleDiffPanel={() =>
-              updatePanelState({
-                panel: activePanel === "diff" ? null : "diff",
-              })
-            }
-            onToggleBrowserPanel={() =>
-              updatePanelState({
-                panel: activePanel === "browser" ? null : "browser",
-                diffTurnId: null,
-                diffFilePath: null,
-              })
-            }
-            onOpenTurnDiffPanel={(turnId, filePath) =>
-              updatePanelState({
-                panel: "diff",
-                diffTurnId: turnId,
-                diffFilePath: filePath ?? null,
-              })
-            }
             onSplitSurface={handleSplitSurface}
           />
         </SidebarInset>
@@ -1135,8 +1083,6 @@ function SingleChatSurface(props: {
           renderPanelContent={shouldRenderPanelContent}
           panel={activePanel}
           threadId={props.threadId}
-          panelState={panelState}
-          onUpdatePanelState={updatePanelState}
         />
       </div>
     );
@@ -1148,26 +1094,6 @@ function SingleChatSurface(props: {
         <ChatView
           key={props.threadId}
           threadId={props.threadId}
-          panelState={panelState}
-          onToggleDiffPanel={() =>
-            updatePanelState({
-              panel: activePanel === "diff" ? null : "diff",
-            })
-          }
-          onToggleBrowserPanel={() =>
-            updatePanelState({
-              panel: activePanel === "browser" ? null : "browser",
-              diffTurnId: null,
-              diffFilePath: null,
-            })
-          }
-          onOpenTurnDiffPanel={(turnId, filePath) =>
-            updatePanelState({
-              panel: "diff",
-              diffTurnId: turnId,
-              diffFilePath: filePath ?? null,
-            })
-          }
           onSplitSurface={handleSplitSurface}
         />
       </SidebarInset>
@@ -1176,13 +1102,7 @@ function SingleChatSurface(props: {
           activePanel === "browser" ? (
             <BrowserPanel mode="sheet" threadId={props.threadId} onClosePanel={closePanel} />
           ) : (
-            <LazyDiffPanel
-              mode="sheet"
-              threadId={props.threadId}
-              panelState={panelState}
-              onUpdatePanelState={updatePanelState}
-              onClosePanel={closePanel}
-            />
+            <LazyDiffPanel mode="sheet" />
           )
         ) : null}
       </RightPanelSheet>
@@ -1196,13 +1116,13 @@ function ChatThreadRouteView() {
     select: (params) => ThreadId.makeUnsafe(params.threadId),
   });
   const search = Route.useSearch();
-  const threadProjectIdSelector = useMemo(
-    () => createThreadProjectIdSelector(threadId),
-    [threadId],
+  const threadTitle = useStore(
+    (store) => store.threads.find((thread) => thread.id === threadId)?.title ?? null,
   );
-  const threadExistsSelector = useMemo(() => createThreadExistsSelector(threadId), [threadId]);
-  const threadProjectId: ProjectId | null = useStore(threadProjectIdSelector);
-  const threadExists = useStore(threadExistsSelector);
+  const threadProjectId = useStore(
+    (store) => store.threads.find((thread) => thread.id === threadId)?.projectId ?? null,
+  );
+  const threadExists = useStore((store) => store.threads.some((thread) => thread.id === threadId));
   const draftThreadState = useComposerDraftStore(
     (store) => store.draftThreadsByThreadId[threadId] ?? null,
   );
@@ -1214,6 +1134,17 @@ function ChatThreadRouteView() {
     draftProjectId: draftThreadState?.projectId ?? null,
   });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!threadsHydrated) {
+      return;
+    }
+
+    notifyVSmuxActiveThread({
+      threadId,
+      title: threadTitle,
+    });
+  }, [threadId, threadTitle, threadsHydrated]);
 
   useEffect(() => {
     if (!threadsHydrated) {
@@ -1254,5 +1185,8 @@ function ChatThreadRouteView() {
 
 export const Route = createFileRoute("/_chat/$threadId")({
   validateSearch: (search) => parseDiffRouteSearch(search),
+  search: {
+    middlewares: [retainSearchParams<DiffRouteSearch>(["panel", "diff"])],
+  },
   component: ChatThreadRouteView,
 });

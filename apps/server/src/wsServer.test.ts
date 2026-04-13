@@ -854,7 +854,7 @@ describe("WebSocket Server", () => {
     );
   });
 
-  it("prefers the most recent existing thread over creating a cwd bootstrap thread", async () => {
+  it("creates a cwd bootstrap thread even when another project has a recent thread", async () => {
     const baseDir = makeTempDir("t3code-state-bootstrap-most-recent-");
     const { dbPath } = deriveServerPathsSync(baseDir, undefined);
     const existingWorkspace = makeTempDir("t3code-existing-workspace-");
@@ -933,20 +933,24 @@ describe("WebSocket Server", () => {
 
     const [ws, welcome] = await connectAndAwaitWelcome(port);
     connections.push(ws);
+    const bootstrapProjectId = (welcome.data as { bootstrapProjectId?: string }).bootstrapProjectId;
+    const bootstrapThreadId = (welcome.data as { bootstrapThreadId?: string }).bootstrapThreadId;
     expect(welcome.data).toEqual(
       expect.objectContaining({
         cwd: newCwd,
         projectName: path.basename(newCwd),
-        bootstrapProjectId: "project-existing",
-        bootstrapThreadId: "thread-existing",
       }),
     );
+    expect(bootstrapProjectId).toBeDefined();
+    expect(bootstrapProjectId).not.toBe("project-existing");
+    expect(bootstrapThreadId).toBeDefined();
+    expect(bootstrapThreadId).not.toBe("thread-existing");
 
     const snapshotResponse = await sendRequest(ws, ORCHESTRATION_WS_METHODS.getSnapshot);
     expect(snapshotResponse.error).toBeUndefined();
     const snapshot = snapshotResponse.result as {
-      projects: Array<{ workspaceRoot: string }>;
-      threads: Array<{ id: string }>;
+      projects: Array<{ id: string; workspaceRoot: string }>;
+      threads: Array<{ id: string; projectId: string }>;
     };
 
     expect(snapshot.projects).toEqual(
@@ -954,7 +958,18 @@ describe("WebSocket Server", () => {
         expect.objectContaining({ workspaceRoot: canonicalTestPath(newCwd) }),
       ]),
     );
-    expect(snapshot.threads).toEqual([expect.objectContaining({ id: "thread-existing" })]);
+    expect(snapshot.projects).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "project-existing" })]),
+    );
+    expect(snapshot.threads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "thread-existing", projectId: "project-existing" }),
+        expect.objectContaining({
+          id: bootstrapThreadId,
+          projectId: bootstrapProjectId,
+        }),
+      ]),
+    );
   });
 
   it("logs outbound websocket push events when explicitly enabled", async () => {
