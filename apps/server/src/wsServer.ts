@@ -1028,6 +1028,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         ).pipe(Effect.map((events) => Array.from(events)));
       }
 
+      case ORCHESTRATION_WS_METHODS.repairState:
+        return yield* orchestrationEngine.repairState();
+
       case WS_METHODS.projectsSearchEntries: {
         const body = stripRequestTag(request.body);
         return yield* Effect.tryPromise({
@@ -1103,6 +1106,16 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.gitPull: {
         const body = stripRequestTag(request.body);
         return yield* git.pullCurrentBranch(body.cwd);
+      }
+
+      case WS_METHODS.gitReadWorkingTreeDiff: {
+        const body = stripRequestTag(request.body);
+        return yield* gitManager.readWorkingTreeDiff(body);
+      }
+
+      case WS_METHODS.gitSummarizeDiff: {
+        const body = stripRequestTag(request.body);
+        return yield* gitManager.summarizeDiff(body);
       }
 
       case WS_METHODS.gitRunStackedAction: {

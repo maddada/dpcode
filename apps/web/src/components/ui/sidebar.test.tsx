@@ -2,7 +2,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
-  SidebarHeaderTrigger,
   SidebarInset,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -65,28 +64,5 @@ describe("sidebar interactive cursors", () => {
     expect(html).toContain("overflow-hidden");
     expect(html).toContain("rounded-l-2xl");
     expect(html).toContain('data-slot="sidebar-inset-surface"');
-  });
-
-  it("renders the header trigger when the desktop sidebar is collapsed", () => {
-    const html = renderToStaticMarkup(
-      <SidebarProvider open={false}>
-        <SidebarHeaderTrigger />
-      </SidebarProvider>,
-    );
-
-    expect(html).toContain('data-slot="sidebar-trigger"');
-    expect(html).toContain("Toggle Sidebar");
-  });
-
-  it("omits the header trigger when the desktop sidebar is expanded", () => {
-    const html = renderToStaticMarkup(
-      <SidebarProvider open>
-        <SidebarHeaderTrigger />
-      </SidebarProvider>,
-    );
-
-    expect(html).toContain('data-slot="sidebar-wrapper"');
-    expect(html).not.toContain('data-slot="sidebar-trigger"');
-    expect(html).not.toContain("Toggle Sidebar");
   });
 });

@@ -22,6 +22,7 @@ import {
 
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
 const WORKTREE_NAME_PREFIX = "dpcode";
+export type SendPhase = "idle" | "preparing-worktree" | "sending-turn";
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
