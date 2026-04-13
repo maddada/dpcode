@@ -35,12 +35,12 @@ The failure came from a merge conflict marker left inside:
 
 - `apps/web/src/components/Sidebar.tsx`
 
-The web build error was caused by unresolved conflict markers like:
+The web build error was caused by unresolved conflict markers like the standard Git merge-marker trio:
 
 ```text
-<<<<<<< Updated upstream
-=======
->>>>>>> Stashed changes
+start marker
+middle separator
+end marker
 ```
 
 This prevented Vite/Babel from parsing the file.
