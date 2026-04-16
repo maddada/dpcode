@@ -24,3 +24,6 @@ __screenshots__/
 .tanstack
 docs/electron-debug.md
 docs/embedded-editor-implementation-summary.md
+/.pi/
+/.tmp/
+/~/
