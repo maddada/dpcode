@@ -70,6 +70,7 @@ import {
   SheetPortal,
   SheetViewport,
 } from "../components/ui/sheet";
+import { resolveThreadPickerTitle, resolveToggledChatPanelPatch } from "./-chatThreadRoute.logic";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { cn } from "~/lib/utils";
 import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "~/components/ui/sidebar";
@@ -436,7 +437,13 @@ function resolveSingleProjectId(input: {
 
 function normalizeSingleSearchFromPane(panelState: SplitViewPanePanelState): DiffRouteSearch {
   if (panelState.panel === "browser") {
-    return { panel: "browser" };
+    return {
+      panel: "browser",
+      ...(panelState.diffTurnId ? { diff: "1", diffTurnId: panelState.diffTurnId } : {}),
+      ...(panelState.diffTurnId && panelState.diffFilePath
+        ? { diffFilePath: panelState.diffFilePath }
+        : {}),
+    };
   }
   if (panelState.panel === "diff") {
     return {
@@ -500,7 +507,7 @@ function SplitPaneEmptyState(props: {
                 />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-foreground">
-                    {thread.title || "New chat"}
+                    {resolveThreadPickerTitle(thread.title)}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">{projectName}</div>
                 </div>
@@ -750,11 +757,7 @@ function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadId: Thre
       }
       const previousState =
         pane === "left" ? activeSplitView.leftPanel : activeSplitView.rightPanel;
-      updatePanePanelState(pane, {
-        panel: previousState.panel === panel ? null : panel,
-        diffTurnId: panel === "diff" ? previousState.diffTurnId : null,
-        diffFilePath: panel === "diff" ? previousState.diffFilePath : null,
-      });
+      updatePanePanelState(pane, resolveToggledChatPanelPatch(previousState, panel));
     },
     [activeSplitView, updatePanePanelState],
   );
@@ -1005,7 +1008,7 @@ function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadId: Thre
                     />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-foreground">
-                        {thread.title}
+                        {resolveThreadPickerTitle(thread.title)}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">{projectName}</div>
                     </div>
@@ -1033,29 +1036,60 @@ function SingleChatSurface(props: {
   const navigate = useNavigate();
   const shouldUseDiffSheet = useMediaQuery(DIFF_INLINE_LAYOUT_MEDIA_QUERY);
   const createSplitView = useSplitViewStore((store) => store.createFromThread);
-  const activePanel = props.search.panel;
-  const panelOpen = activePanel !== undefined;
+  const activePanel = props.search.panel ?? null;
+  const diffTurnId = props.search.diffTurnId ?? null;
+  const diffFilePath = props.search.diffFilePath ?? null;
+  const panelOpen = activePanel !== null;
   const [hasOpenedPanel, setHasOpenedPanel] = useState(panelOpen);
   const [lastOpenPanel, setLastOpenPanel] = useState<ChatRightPanel>(activePanel ?? "browser");
+  const panelState: SplitViewPanePanelState = {
+    panel: activePanel,
+    diffTurnId,
+    diffFilePath,
+    hasOpenedPanel,
+    lastOpenPanel,
+  };
+  const updatePanelState = useCallback(
+    (patch: Partial<Pick<SplitViewPanePanelState, "panel" | "diffTurnId" | "diffFilePath">>) => {
+      const previousState: SplitViewPanePanelState = {
+        panel: activePanel,
+        diffTurnId,
+        diffFilePath,
+        hasOpenedPanel,
+        lastOpenPanel,
+      };
+      const nextPanel = patch.panel ?? previousState.panel;
+      const nextState: SplitViewPanePanelState = {
+        ...previousState,
+        ...patch,
+        panel: nextPanel,
+        hasOpenedPanel: previousState.hasOpenedPanel || nextPanel !== null,
+        lastOpenPanel:
+          nextPanel === "browser" || nextPanel === "diff" ? nextPanel : previousState.lastOpenPanel,
+      };
+      void navigate({
+        to: "/$threadId",
+        params: { threadId: props.threadId },
+        replace: true,
+        search: () => normalizeSingleSearchFromPane(nextState),
+      });
+    },
+    [
+      activePanel,
+      diffFilePath,
+      diffTurnId,
+      hasOpenedPanel,
+      lastOpenPanel,
+      navigate,
+      props.threadId,
+    ],
+  );
   const closePanel = useCallback(() => {
-    void navigate({
-      to: "/$threadId",
-      params: { threadId: props.threadId },
-      search: (previous) => ({ ...stripDiffSearchParams(previous), panel: undefined }),
-    });
-  }, [navigate, props.threadId]);
+    updatePanelState({ panel: null });
+  }, [updatePanelState]);
   const openPanel = useCallback(() => {
-    void navigate({
-      to: "/$threadId",
-      params: { threadId: props.threadId },
-      search: (previous) => {
-        const rest = stripDiffSearchParams(previous);
-        return lastOpenPanel === "browser"
-          ? { ...rest, panel: "browser" }
-          : { ...rest, panel: "diff", diff: "1" };
-      },
-    });
-  }, [lastOpenPanel, navigate, props.threadId]);
+    updatePanelState({ panel: lastOpenPanel });
+  }, [lastOpenPanel, updatePanelState]);
   const handleSplitSurface = useCallback(() => {
     if (!props.projectId) return;
     const splitViewId = createSplitView({
@@ -1090,25 +1124,24 @@ function SingleChatSurface(props: {
 
     const unsubscribe = onMenuAction((action) => {
       if (action !== "toggle-browser") return;
-      void navigate({
-        to: "/$threadId",
-        params: { threadId: props.threadId },
-        replace: true,
-        search: (previous) => {
-          const rest = stripDiffSearchParams(previous);
-          return activePanel === "browser"
-            ? { ...rest, panel: undefined }
-            : { ...rest, panel: "browser" };
-        },
-      });
+      updatePanelState(
+        resolveToggledChatPanelPatch(
+          {
+            panel: activePanel,
+            diffTurnId,
+            diffFilePath,
+          },
+          "browser",
+        ),
+      );
     });
 
     return () => {
       unsubscribe?.();
     };
-  }, [activePanel, navigate, props.threadId]);
+  }, [activePanel, diffFilePath, diffTurnId, updatePanelState]);
 
-  const shouldRenderPanelContent = activePanel !== undefined && (panelOpen || hasOpenedPanel);
+  const shouldRenderPanelContent = activePanel !== null && (panelOpen || hasOpenedPanel);
 
   if (!shouldUseDiffSheet) {
     return (
@@ -1117,6 +1150,38 @@ function SingleChatSurface(props: {
           <ChatView
             key={props.threadId}
             threadId={props.threadId}
+            panelState={panelState}
+            onToggleDiffPanel={() => {
+              updatePanelState(
+                resolveToggledChatPanelPatch(
+                  {
+                    panel: activePanel,
+                    diffTurnId,
+                    diffFilePath,
+                  },
+                  "diff",
+                ),
+              );
+            }}
+            onToggleBrowserPanel={() => {
+              updatePanelState(
+                resolveToggledChatPanelPatch(
+                  {
+                    panel: activePanel,
+                    diffTurnId,
+                    diffFilePath,
+                  },
+                  "browser",
+                ),
+              );
+            }}
+            onOpenTurnDiffPanel={(turnId, filePath) => {
+              updatePanelState({
+                panel: "diff",
+                diffTurnId: turnId,
+                diffFilePath: filePath ?? null,
+              });
+            }}
             onSplitSurface={handleSplitSurface}
           />
         </SidebarInset>
@@ -1138,6 +1203,38 @@ function SingleChatSurface(props: {
         <ChatView
           key={props.threadId}
           threadId={props.threadId}
+          panelState={panelState}
+          onToggleDiffPanel={() => {
+            updatePanelState(
+              resolveToggledChatPanelPatch(
+                {
+                  panel: activePanel,
+                  diffTurnId,
+                  diffFilePath,
+                },
+                "diff",
+              ),
+            );
+          }}
+          onToggleBrowserPanel={() => {
+            updatePanelState(
+              resolveToggledChatPanelPatch(
+                {
+                  panel: activePanel,
+                  diffTurnId,
+                  diffFilePath,
+                },
+                "browser",
+              ),
+            );
+          }}
+          onOpenTurnDiffPanel={(turnId, filePath) => {
+            updatePanelState({
+              panel: "diff",
+              diffTurnId: turnId,
+              diffFilePath: filePath ?? null,
+            });
+          }}
           onSplitSurface={handleSplitSurface}
         />
       </SidebarInset>
