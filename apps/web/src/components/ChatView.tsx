@@ -294,6 +294,21 @@ function eventTargetsComposer(
   const target = event.target;
   return target instanceof Node ? composerForm.contains(target) : false;
 }
+
+function canHandleComposerPickerShortcut(
+  event: globalThis.KeyboardEvent,
+  composerForm: HTMLFormElement | null,
+): boolean {
+  if (!composerForm) return false;
+  if (eventTargetsComposer(event, composerForm)) return true;
+  const target = event.target;
+  return (
+    target === document.body ||
+    target === document.documentElement ||
+    document.activeElement === document.body ||
+    document.activeElement === document.documentElement
+  );
+}
 const EMPTY_AVAILABLE_EDITORS: EditorId[] = [];
 const EMPTY_PROVIDER_STATUSES: ServerProviderStatus[] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
@@ -888,7 +903,6 @@ export default function ChatView({
   // When set, the thread-change reset effect will open the sidebar instead of closing it.
   // Used by "Implement in a new thread" to carry the sidebar-open intent across navigation.
   const planSidebarOpenOnNextThreadRef = useRef(false);
-  const [nowTick, setNowTick] = useState(() => Date.now());
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
   const [pullRequestDialogState, setPullRequestDialogState] =
@@ -913,9 +927,13 @@ export default function ChatView({
     {},
     LastInvokedScriptByProjectSchema,
   );
+  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
+  const [isTraitsPickerOpen, setIsTraitsPickerOpen] = useState(false);
 
   useEffect(() => {
     setComposerCommandPicker(null);
+    setIsModelPickerOpen(false);
+    setIsTraitsPickerOpen(false);
   }, [threadId]);
   useEffect(() => {
     // Thread-bound handoff dialog state is reset by the dedicated hook.
@@ -1268,15 +1286,11 @@ export default function ChatView({
   const claudeDynamicModelsQuery = useQuery(
     providerModelsQueryOptions({ provider: "claudeAgent" }),
   );
-  const codexDynamicModelsQuery = useQuery(
-    providerModelsQueryOptions({ provider: "codex" }),
-  );
+  const codexDynamicModelsQuery = useQuery(providerModelsQueryOptions({ provider: "codex" }));
   const claudeDynamicAgentsQuery = useQuery(
     providerAgentsQueryOptions({ provider: "claudeAgent" }),
   );
-  const codexDynamicAgentsQuery = useQuery(
-    providerAgentsQueryOptions({ provider: "codex" }),
-  );
+  const codexDynamicAgentsQuery = useQuery(providerAgentsQueryOptions({ provider: "codex" }));
   const modelOptionsByProvider = useMemo(() => {
     const staticOptions = getCustomModelOptionsByProvider(settings);
     const result = { ...staticOptions };
@@ -1292,9 +1306,7 @@ export default function ChatView({
       if (dynamicModels && dynamicModels.length > 0) {
         const dynamicSlugs = new Set(dynamicModels.map((m) => m.slug));
         // Build a lookup from static options for proper display names
-        const staticNameBySlug = new Map(
-          staticOptions[provider].map((m) => [m.slug, m.name]),
-        );
+        const staticNameBySlug = new Map(staticOptions[provider].map((m) => [m.slug, m.name]));
         // Keep custom models that aren't already in the dynamic list
         const customOnlyModels = staticOptions[provider].filter(
           (m) => "isCustom" in m && m.isCustom && !dynamicSlugs.has(m.slug),
@@ -1512,7 +1524,6 @@ export default function ChatView({
   const [keepSettledActiveTurnLayout, setKeepSettledActiveTurnLayout] = useState(false);
   const previousActiveTurnLayoutLiveRef = useRef(activeTurnLayoutLive);
   const previousActiveTurnLayoutKeyRef = useRef<string | null>(null);
-  const nowIso = new Date(nowTick).toISOString();
   const activeWorkStartedAt = hasLiveTurnTail
     ? (activeLatestTurn?.startedAt ?? localDispatch?.startedAt ?? null)
     : deriveActiveWorkStartedAt(
@@ -2246,6 +2257,19 @@ export default function ChatView({
       focusComposer();
     });
   }, [focusComposer]);
+  // Keep the two composer picker menus mutually exclusive so shortcuts always open one surface.
+  const handleModelPickerOpenChange = useCallback((open: boolean) => {
+    setIsModelPickerOpen(open);
+    if (open) {
+      setIsTraitsPickerOpen(false);
+    }
+  }, []);
+  const handleTraitsPickerOpenChange = useCallback((open: boolean) => {
+    setIsTraitsPickerOpen(open);
+    if (open) {
+      setIsModelPickerOpen(false);
+    }
+  }, []);
   const appendVoiceTranscriptToComposer = useCallback(
     (transcript: string) => {
       const nextPrompt = appendVoiceTranscriptToPrompt(promptRef.current, transcript);
@@ -3404,17 +3428,6 @@ export default function ChatView({
     worktreePath: resolvedThreadWorktreePath,
   });
 
-  useEffect(() => {
-    if (!isWorking) return;
-    setNowTick(Date.now());
-    const timer = window.setInterval(() => {
-      setNowTick(Date.now());
-    }, 1000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [isWorking]);
-
   const beginLocalDispatch = useCallback(
     (options?: { preparingWorktree?: boolean }) => {
       const preparingWorktree = Boolean(options?.preparingWorktree);
@@ -3529,6 +3542,36 @@ export default function ChatView({
         event.stopPropagation();
         void onInterrupt();
         return;
+      }
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      const composerPickerShortcutActive =
+        !isTerminalFocused() &&
+        !isVoiceRecording &&
+        !isVoiceTranscribing &&
+        !isComposerApprovalState &&
+        canHandleComposerPickerShortcut(event, composerFormRef.current);
+      if (
+        composerPickerShortcutActive &&
+        event.shiftKey &&
+        !event.altKey &&
+        event.metaKey === useMetaForMod &&
+        event.ctrlKey === !useMetaForMod
+      ) {
+        const normalizedKey = event.key.toLowerCase();
+        if (normalizedKey === "m") {
+          event.preventDefault();
+          event.stopPropagation();
+          handleModelPickerOpenChange(true);
+          scheduleComposerFocus();
+          return;
+        }
+        if (normalizedKey === "e") {
+          event.preventDefault();
+          event.stopPropagation();
+          handleTraitsPickerOpenChange(true);
+          scheduleComposerFocus();
+          return;
+        }
       }
       const shortcutContext = {
         terminalFocus: isTerminalFocused(),
@@ -3696,8 +3739,14 @@ export default function ChatView({
     onSplitSurface,
     isFocusedPane,
     hasLiveTurn,
+    handleModelPickerOpenChange,
+    handleTraitsPickerOpenChange,
+    isComposerApprovalState,
+    isVoiceRecording,
+    isVoiceTranscribing,
     setTerminalWorkspaceTab,
     surfaceMode,
+    scheduleComposerFocus,
     toggleTerminalVisibility,
   ]);
 
@@ -5181,6 +5230,8 @@ export default function ChatView({
     modelOptions: selectedProviderModelOptions,
     prompt,
     includeFastMode: false,
+    open: isTraitsPickerOpen,
+    onOpenChange: handleTraitsPickerOpenChange,
     onPromptChange: setPromptFromTraits,
   });
   const toggleFastMode = useCallback(() => {
@@ -5906,7 +5957,6 @@ export default function ChatView({
               completionDividerBeforeEntryId={completionDividerBeforeEntryId}
               completionSummary={completionSummary}
               turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
-              nowIso={nowIso}
               expandedWorkGroups={expandedWorkGroups}
               onToggleWorkGroup={onToggleWorkGroup}
               onOpenTurnDiff={onOpenTurnDiff}
@@ -6178,6 +6228,8 @@ export default function ChatView({
                                 lockedProvider={lockedProvider}
                                 providers={providerStatuses}
                                 modelOptionsByProvider={modelOptionsByProvider}
+                                open={isModelPickerOpen}
+                                onOpenChange={handleModelPickerOpenChange}
                                 {...(composerProviderState.modelPickerIconClassName
                                   ? {
                                       activeProviderIconClassName:
