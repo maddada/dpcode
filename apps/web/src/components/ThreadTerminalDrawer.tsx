@@ -253,6 +253,64 @@ function TerminalViewport({
     };
   }, []);
 
+  useEffect(() => {
+    const mount = containerRef.current;
+    if (!mount || !window.matchMedia("(pointer: coarse)").matches) {
+      return;
+    }
+
+    let lastTouchY: number | null = null;
+
+    const resolveViewport = () => mount.querySelector<HTMLElement>(".xterm-viewport");
+
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      lastTouchY = touch ? touch.clientY : null;
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch || lastTouchY === null) {
+        return;
+      }
+
+      const viewport = resolveViewport();
+      if (!viewport) {
+        lastTouchY = touch.clientY;
+        return;
+      }
+
+      const deltaY = lastTouchY - touch.clientY;
+      if (Math.abs(deltaY) < 0.5) {
+        return;
+      }
+
+      const previousScrollTop = viewport.scrollTop;
+      viewport.scrollTop += deltaY;
+      lastTouchY = touch.clientY;
+
+      if (viewport.scrollTop !== previousScrollTop) {
+        event.preventDefault();
+      }
+    };
+
+    const clearTouchState = () => {
+      lastTouchY = null;
+    };
+
+    mount.addEventListener("touchstart", handleTouchStart, { passive: true });
+    mount.addEventListener("touchmove", handleTouchMove, { passive: false });
+    mount.addEventListener("touchend", clearTouchState);
+    mount.addEventListener("touchcancel", clearTouchState);
+
+    return () => {
+      mount.removeEventListener("touchstart", handleTouchStart);
+      mount.removeEventListener("touchmove", handleTouchMove);
+      mount.removeEventListener("touchend", clearTouchState);
+      mount.removeEventListener("touchcancel", clearTouchState);
+    };
+  }, []);
+
   const clearSelectionAction = useCallback(() => {
     selectionActionRequestIdRef.current += 1;
     if (selectionActionTimerRef.current !== null) {

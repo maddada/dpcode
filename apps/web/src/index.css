@@ -161,7 +161,7 @@ body {
   letter-spacing: -0.015em;
   margin: 0;
   padding: 0;
-  min-height: 100vh;
+  min-height: 100%;
 }
 
 /* Reuse the OS UI stack on chat surfaces that should feel native and utilitarian. */
@@ -179,12 +179,22 @@ html,
 body,
 #root {
   height: 100%;
+  min-height: 100%;
   width: 100%;
   max-width: 100%;
   overflow-y: hidden;
   overflow-x: hidden;
   overflow-x: clip;
   overscroll-behavior-y: none;
+}
+
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
 }
 
 /* Rounded left edge on the content surface when a left sidebar is expanded */
@@ -283,6 +293,19 @@ input {
 .thread-terminal-drawer .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
   width: 6px !important;
   left: 0 !important;
+}
+
+@media (pointer: coarse) {
+  .thread-terminal-drawer .xterm,
+  .thread-terminal-drawer .xterm-screen,
+  .thread-terminal-drawer .xterm-viewport {
+    touch-action: pan-y;
+  }
+
+  .thread-terminal-drawer .xterm-viewport {
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 /* Reasoning select -- clickable label surface */
