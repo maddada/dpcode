@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ProjectEditorView } from "../components/project-editor/ProjectEditorView";
 import ThreadSidebar from "../components/Sidebar";
-import { isElectron } from "../env";
 import { useDisposableThreadLifecycle } from "../hooks/useDisposableThreadLifecycle";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useProjectEditorActions } from "../hooks/useProjectEditorActions";
@@ -81,7 +80,6 @@ function ChatRouteGlobalShortcuts() {
         },
       });
       if (command === "sidebar.toggle") {
-        if (!isElectron) return;
         event.preventDefault();
         event.stopPropagation();
         toggleSidebar();

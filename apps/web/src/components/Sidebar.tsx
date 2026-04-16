@@ -204,6 +204,7 @@ const ADD_PROJECT_SNAPSHOT_CATCH_UP_MAX_ATTEMPTS = 6;
 const ADD_PROJECT_SNAPSHOT_CATCH_UP_DELAY_MS = 50;
 const ADD_PROJECT_EXISTING_SYNC_ERROR =
   "This folder is already linked, but the existing project has not synced into the sidebar yet. Try again in a moment.";
+const SHOW_DISPOSABLE_THREAD_PROJECT_ACTION = false;
 
 const PROJECT_CONTEXT_MENU_FOLDER_ICON = renderToStaticMarkup(<HiOutlineFolderOpen />);
 const PROJECT_CONTEXT_MENU_EDIT_ICON =
@@ -654,39 +655,6 @@ function SortableProjectItem({
     >
       {children({ attributes, listeners, setActivatorNodeRef })}
     </li>
-  );
-}
-
-function SidebarSegmentedPicker({
-  activeView,
-  onSelectView,
-}: {
-  activeView: "threads" | "workspace";
-  onSelectView: (view: "threads" | "workspace") => void;
-}) {
-  return (
-    <div className="px-3 pb-2.5">
-      <div className="inline-flex w-full rounded-md bg-muted/40 p-0.5">
-        {(["threads", "workspace"] as const).map((view) => {
-          const active = activeView === view;
-          return (
-            <button
-              key={view}
-              type="button"
-              className={cn(
-                "flex-1 rounded-sm px-2.5 py-1 text-[11.5px] font-medium tracking-tight transition-colors",
-                active
-                  ? "bg-background text-foreground shadow-xs dark:bg-neutral-800"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => onSelectView(view)}
-            >
-              {view === "threads" ? "Threads" : "Workspace"}
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -1264,21 +1232,6 @@ export default function Sidebar() {
       });
     },
     [navigate],
-  );
-
-  const handleSidebarViewChange = useCallback(
-    (view: "threads" | "workspace") => {
-      if (view === "workspace") {
-        const fallbackWorkspaceId = workspacePages[0]?.id;
-        if (!fallbackWorkspaceId) {
-          return;
-        }
-        navigateToWorkspace(routeWorkspaceId ?? fallbackWorkspaceId);
-        return;
-      }
-      void navigate({ to: "/" });
-    },
-    [navigate, navigateToWorkspace, routeWorkspaceId, workspacePages],
   );
 
   const handleCreateWorkspace = useCallback(() => {
@@ -3425,7 +3378,7 @@ export default function Sidebar() {
                     />
                   }
                   showOnHover
-                  className="top-1 right-[3.25rem] size-5 rounded-md p-0 text-muted-foreground/60 hover:bg-white/8 hover:text-foreground"
+                  className="top-1 right-7.5 size-5 rounded-md p-0 text-muted-foreground/60 hover:bg-white/8 hover:text-foreground"
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -3447,35 +3400,37 @@ export default function Sidebar() {
                 : "New terminal thread"}
             </TooltipPopup>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <SidebarMenuAction
-                  render={
-                    <button
-                      type="button"
-                      aria-label={`Create disposable thread in ${project.name}`}
-                    />
-                  }
-                  showOnHover
-                  className="top-1 right-[4.75rem] size-5 rounded-md p-0 text-muted-foreground/60 hover:bg-white/8 hover:text-foreground"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void handleNewThread(project.id, {
-                      envMode: resolveSidebarNewThreadEnvMode({
-                        defaultEnvMode: appSettings.defaultThreadEnvMode,
-                      }),
-                      temporary: true,
-                    });
-                  }}
-                >
-                  <LuMessageSquareDashed className="size-3.5" />
-                </SidebarMenuAction>
-              }
-            />
-            <TooltipPopup side="top">New disposable thread</TooltipPopup>
-          </Tooltip>
+          {SHOW_DISPOSABLE_THREAD_PROJECT_ACTION ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <SidebarMenuAction
+                    render={
+                      <button
+                        type="button"
+                        aria-label={`Create disposable thread in ${project.name}`}
+                      />
+                    }
+                    showOnHover
+                    className="top-1 right-[4.75rem] size-5 rounded-md p-0 text-muted-foreground/60 hover:bg-white/8 hover:text-foreground"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void handleNewThread(project.id, {
+                        envMode: resolveSidebarNewThreadEnvMode({
+                          defaultEnvMode: appSettings.defaultThreadEnvMode,
+                        }),
+                        temporary: true,
+                      });
+                    }}
+                  >
+                    <LuMessageSquareDashed className="size-3.5" />
+                  </SidebarMenuAction>
+                }
+              />
+              <TooltipPopup side="top">New disposable thread</TooltipPopup>
+            </Tooltip>
+          ) : null}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -3537,36 +3492,36 @@ export default function Sidebar() {
                       : renderSplitRow(entry.splitView),
                 )}
 
-              {hasHiddenThreads && !isThreadListExpanded && (
-                <SidebarMenuSubItem className="w-full">
-                  <SidebarMenuSubButton
-                    render={<button type="button" />}
-                    data-thread-selection-safe
-                    size="sm"
-                    className="h-7 w-full translate-x-0 justify-start rounded-lg pr-2 pl-8 text-left text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/72 hover:bg-accent/55 hover:text-foreground"
-                    onClick={() => {
-                      expandThreadListForProject(project.id);
-                    }}
-                  >
-                    <span>Show more</span>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              )}
-              {hasHiddenThreads && isThreadListExpanded && (
-                <SidebarMenuSubItem className="w-full">
-                  <SidebarMenuSubButton
-                    render={<button type="button" />}
-                    data-thread-selection-safe
-                    size="sm"
-                    className="h-7 w-full translate-x-0 justify-start rounded-lg pr-2 pl-8 text-left text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/72 hover:bg-accent/55 hover:text-foreground"
-                    onClick={() => {
-                      collapseThreadListForProject(project.id);
-                    }}
-                  >
-                    <span>Show less</span>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              )}
+                {hasHiddenThreads && !isThreadListExpanded && (
+                  <SidebarMenuSubItem className="w-full">
+                    <SidebarMenuSubButton
+                      render={<button type="button" />}
+                      data-thread-selection-safe
+                      size="sm"
+                      className="h-7 w-full translate-x-0 justify-start rounded-lg pr-2 pl-8 text-left text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/72 hover:bg-accent/55 hover:text-foreground"
+                      onClick={() => {
+                        expandThreadListForProject(project.id);
+                      }}
+                    >
+                      <span>Show more</span>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                )}
+                {hasHiddenThreads && isThreadListExpanded && (
+                  <SidebarMenuSubItem className="w-full">
+                    <SidebarMenuSubButton
+                      render={<button type="button" />}
+                      data-thread-selection-safe
+                      size="sm"
+                      className="h-7 w-full translate-x-0 justify-start rounded-lg pr-2 pl-8 text-left text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/72 hover:bg-accent/55 hover:text-foreground"
+                      onClick={() => {
+                        collapseThreadListForProject(project.id);
+                      }}
+                    >
+                      <span>Show less</span>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                )}
               </SidebarMenuSub>
             </div>
           </div>
@@ -3968,7 +3923,7 @@ export default function Sidebar() {
   }, [allProjectsExpanded, collapseProjectsExcept, focusedProjectId, setAllProjectsExpanded]);
 
   const wordmark = (
-    <div className="flex w-full items-center gap-1.5">
+    <div className="flex min-w-0 items-center gap-1.5">
       <SidebarTrigger className="shrink-0 md:hidden" />
       <Tooltip>
         <TooltipTrigger
@@ -3987,10 +3942,6 @@ export default function Sidebar() {
           Version {APP_VERSION}
         </TooltipPopup>
       </Tooltip>
-      <SidebarTrigger
-        className="hidden size-7 shrink-0 text-muted-foreground/75 hover:text-foreground md:inline-flex ml-auto"
-        aria-label="Toggle thread sidebar"
-      />
     </div>
   );
 
@@ -4001,7 +3952,6 @@ export default function Sidebar() {
           <SidebarHeader
             className={cn(
               "drag-region h-[48px] flex-row items-center gap-2 px-4 py-0 font-system-ui",
-              appSettings.sidebarSide === "left" && "pl-[90px]",
             )}
           >
             {wordmark}
@@ -4107,10 +4057,6 @@ export default function Sidebar() {
           </SidebarGroup>
         ) : (
           <>
-            <SidebarSegmentedPicker
-              activeView={isOnWorkspace ? "workspace" : "threads"}
-              onSelectView={handleSidebarViewChange}
-            />
             {/* Primary sidebar actions stay limited to features we currently ship. */}
             <SidebarGroup className="px-1.5 pt-1 pb-1.5">
               <SidebarMenu className="gap-0.5">

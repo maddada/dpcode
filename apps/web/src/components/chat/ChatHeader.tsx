@@ -22,10 +22,9 @@ import {
   ArrowRightIcon,
   DiffIcon,
   EllipsisIcon,
-  FileIcon,
   GlobeIcon,
   PlusIcon,
-  TerminalSquareIcon,
+  XIcon,
 } from "~/lib/icons";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -36,9 +35,6 @@ import { Toggle } from "../ui/toggle";
 import { SidebarTrigger, useSidebar } from "../ui/sidebar";
 import { isElectron } from "~/env";
 import { cn } from "~/lib/utils";
-import { readNativeApi } from "~/nativeApi";
-import { resolveEditorIcon } from "../../editorMetadata";
-import { usePreferredEditor } from "../../editorPreferences";
 import { useIsDisposableThread } from "~/hooks/useIsDisposableThread";
 import { ClaudeAI, OpenAI } from "../Icons";
 import { gitStatusQueryOptions } from "~/lib/gitReactQuery";
@@ -102,14 +98,11 @@ export const ChatHeader = memo(function ChatHeader({
   threadBreadcrumbs,
   hideHandoffControls = false,
   isGitRepo,
-  openInCwd,
   activeProjectScripts,
   preferredScriptId,
   keybindings,
-  availableEditors,
   terminalAvailable,
   terminalOpen,
-  editorShortcutLabel,
   terminalToggleShortcutLabel,
   browserToggleShortcutLabel,
   diffToggleShortcutLabel,
@@ -128,7 +121,6 @@ export const ChatHeader = memo(function ChatHeader({
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
-  onOpenEditor,
   onToggleTerminal,
   onToggleDiff,
   onToggleBrowser,
@@ -139,8 +131,6 @@ export const ChatHeader = memo(function ChatHeader({
   const headerRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const [openAddActionNonce, setOpenAddActionNonce] = useState(0);
-  const [preferredEditor] = usePreferredEditor(availableEditors);
-  const EditorIcon = preferredEditor ? resolveEditorIcon(preferredEditor) : null;
   // Reuse the shared git status query so the diff toggle can show live totals
   // without introducing a second API shape just for the header control.
   const { data: gitStatus = null } = useQuery(gitStatusQueryOptions(gitCwd));
@@ -279,58 +269,8 @@ export const ChatHeader = memo(function ChatHeader({
             onDeleteScript={onDeleteProjectScript}
           />
         ) : null}
-        {/* Inline controls — shown when there's enough room. */}
-        {!isDisposableThread && !compact && activeProjectName ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  className="shrink-0 gap-1.5"
-                  aria-label="Open project editor"
-                  onClick={onOpenEditor}
-                >
-                  <FileIcon className="size-3.5 shrink-0" />
-                  <span className="truncate">Editor</span>
-                </Button>
-              }
-            />
-            <TooltipPopup side="bottom">
-              {editorShortcutLabel
-                ? `Open project editor (${editorShortcutLabel})`
-                : "Open project editor"}
-            </TooltipPopup>
-          </Tooltip>
-        ) : null}
-        {!isDisposableThread && !compact && terminalAvailable ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Toggle
-                  className="shrink-0"
-                  pressed={terminalOpen}
-                  onPressedChange={onToggleTerminal}
-                  aria-label="Toggle terminal"
-                  variant="outline"
-                  size="xs"
-                >
-                  <TerminalSquareIcon className="size-3" />
-                </Toggle>
-              }
-            />
-            <TooltipPopup side="bottom">
-              {terminalToggleShortcutLabel
-                ? `Toggle terminal (${terminalToggleShortcutLabel})`
-                : "Toggle terminal"}
-            </TooltipPopup>
-          </Tooltip>
-        ) : null}
-
-        {/* Panel toggles menu — editor, terminal, browser, split chat. */}
-        {!isDisposableThread &&
-        (terminalAvailable || activeProjectName || chatLayoutAction || isElectron) ? (
+        {/* Panel toggles menu — terminal, browser, split chat. */}
+        {!isDisposableThread && (terminalAvailable || chatLayoutAction || isElectron) ? (
           <Menu modal={false}>
             <MenuTrigger
               render={
@@ -349,33 +289,6 @@ export const ChatHeader = memo(function ChatHeader({
               side="bottom"
               className="w-50 rounded-lg border-border bg-popover shadow-lg"
             >
-              {activeProjectName ? (
-                <>
-                  <MenuSeparator className="mx-1" />
-                  <MenuItem onClick={onOpenEditor}>
-                    <FileIcon className="size-3.5 shrink-0" />
-                    <span>Project editor</span>
-                    {editorShortcutLabel && (
-                      <span className="ml-auto text-[11px] opacity-60">{editorShortcutLabel}</span>
-                    )}
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      const api = readNativeApi();
-                      if (api && openInCwd && preferredEditor) {
-                        void api.shell.openInEditor(openInCwd, preferredEditor);
-                      }
-                    }}
-                    disabled={!preferredEditor || !openInCwd}
-                  >
-                    {EditorIcon ? (
-                      <EditorIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                    ) : null}
-                    <span>Open in editor</span>
-                  </MenuItem>
-                </>
-              ) : null}
-              <MenuSeparator className="mx-1" />
               <MenuItem onClick={onToggleTerminal} disabled={!terminalAvailable}>
                 <BsTerminal className="size-3.5 shrink-0" />
                 <span>{terminalOpen ? "Hide terminal" : "Show terminal"}</span>
@@ -466,6 +379,25 @@ export const ChatHeader = memo(function ChatHeader({
                 : "Toggle diff panel"}
           </TooltipPopup>
         </Tooltip>
+        {diffOpen ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-7 shrink-0"
+                  aria-label="Close diff panel"
+                  onClick={onToggleDiff}
+                >
+                  <XIcon className="size-3.5" />
+                </Button>
+              }
+            />
+            <TooltipPopup side="bottom">Close diff panel</TooltipPopup>
+          </Tooltip>
+        ) : null}
       </div>
     </div>
   );
