@@ -456,7 +456,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     ).toSorted(
       (left, right) =>
         left.workspaceRoot.localeCompare(right.workspaceRoot) ||
-      left.path.localeCompare(right.path),
+        left.path.localeCompare(right.path),
     );
   });
 
