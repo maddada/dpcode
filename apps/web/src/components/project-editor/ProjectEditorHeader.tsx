@@ -1,7 +1,8 @@
 import { type EditorId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
 
 import { isElectron } from "~/env";
-import { DiffIcon, GlobeIcon, TerminalSquareIcon } from "~/lib/icons";
+import { DiffIcon, GlobeIcon, TerminalSquareIcon, XIcon } from "~/lib/icons";
+import { Button } from "~/components/ui/button";
 import { SidebarTrigger } from "~/components/ui/sidebar";
 import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -129,6 +130,25 @@ export function ProjectEditorHeader({
                 : "Toggle diff panel"}
           </TooltipPopup>
         </Tooltip>
+        {diffOpen ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-7 shrink-0"
+                  aria-label="Close diff panel"
+                  onClick={onToggleDiff}
+                >
+                  <XIcon className="size-3.5" />
+                </Button>
+              }
+            />
+            <TooltipPopup side="bottom">Close diff panel</TooltipPopup>
+          </Tooltip>
+        ) : null}
       </div>
     </div>
   );

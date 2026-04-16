@@ -52,6 +52,7 @@ import {
   useSplitViewStore,
 } from "../splitViewStore";
 import { useStore } from "../store";
+import { XIcon } from "../lib/icons";
 import { Button } from "../components/ui/button";
 import {
   Dialog,
@@ -62,7 +63,13 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Sheet, SheetPopup } from "../components/ui/sheet";
+import {
+  Sheet,
+  SheetBackdrop,
+  SheetPopup,
+  SheetPortal,
+  SheetViewport,
+} from "../components/ui/sheet";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { cn } from "~/lib/utils";
 import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "~/components/ui/sidebar";
@@ -81,7 +88,26 @@ const RightPanelSheet = (props: {
   children: ReactNode;
   panelOpen: boolean;
   onClosePanel: () => void;
+  showFloatingCloseButton?: boolean;
 }) => {
+  const handleFloatingCloseButtonClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+
+      const matchingCloseButton = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('[aria-label="Close diff panel"]'),
+      ).find((button) => button !== event.currentTarget);
+
+      if (matchingCloseButton) {
+        matchingCloseButton.click();
+        return;
+      }
+
+      props.onClosePanel();
+    },
+    [props],
+  );
+
   return (
     <Sheet
       open={props.panelOpen}
@@ -91,14 +117,32 @@ const RightPanelSheet = (props: {
         }
       }}
     >
-      <SheetPopup
-        side="right"
-        showCloseButton={false}
-        keepMounted
-        className="w-[min(88vw,820px)] max-w-[820px] p-0"
-      >
-        {props.children}
-      </SheetPopup>
+      <SheetPortal keepMounted>
+        <SheetBackdrop className="z-50" onClick={props.onClosePanel} />
+        <SheetViewport side="right" className="z-[60]">
+          <div className="pointer-events-auto relative flex-1">
+            <button
+              type="button"
+              aria-label="Close side panel"
+              className="absolute inset-0 z-[90] bg-transparent"
+              onClick={handleFloatingCloseButtonClick}
+            >
+              {props.showFloatingCloseButton ? (
+                <span className="pointer-events-none absolute left-[5px] top-[5px] inline-flex size-7 items-center justify-center rounded-full border border-border/70 bg-background/90 text-foreground shadow-sm backdrop-blur-sm">
+                  <XIcon className="size-3.5 shrink-0 opacity-80" />
+                </span>
+              ) : null}
+            </button>
+          </div>
+          <SheetPopup
+            side="right"
+            showCloseButton={false}
+            className="w-[min(88vw,820px)] max-w-[820px] p-0"
+          >
+            {props.children}
+          </SheetPopup>
+        </SheetViewport>
+      </SheetPortal>
     </Sheet>
   );
 };
@@ -1097,7 +1141,11 @@ function SingleChatSurface(props: {
           onSplitSurface={handleSplitSurface}
         />
       </SidebarInset>
-      <RightPanelSheet panelOpen={panelOpen} onClosePanel={closePanel}>
+      <RightPanelSheet
+        panelOpen={panelOpen}
+        onClosePanel={closePanel}
+        showFloatingCloseButton={activePanel === "diff"}
+      >
         {shouldRenderPanelContent ? (
           activePanel === "browser" ? (
             <BrowserPanel mode="sheet" threadId={props.threadId} onClosePanel={closePanel} />
