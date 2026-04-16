@@ -3888,7 +3888,7 @@ export default function ChatView({
       const api = readNativeApi();
       if (!api || !activeThread || isRevertingCheckpoint) return;
 
-      if (hasLiveTurn || phase === "running" || isSendBusy || isConnecting) {
+      if (hasLiveTurn || isSendBusy || isConnecting) {
         setThreadError(activeThread.id, "Interrupt the current turn before rewinding the thread.");
         return;
       }

@@ -7,6 +7,7 @@
  * @module Server
  */
 import http from "node:http";
+import { realpathSync } from "node:fs";
 import type { Duplex } from "node:stream";
 
 import Mime from "@effect/platform-node/Mime";

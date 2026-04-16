@@ -386,12 +386,12 @@ export function buildProjectThreadTree<
 
 export function getVisibleSidebarEntriesForPreview<
   T extends {
-    rowId: Thread["id"];
-    rootRowId: Thread["id"];
+    rowId: string;
+    rootRowId: string;
   },
 >(input: {
   entries: readonly T[];
-  activeEntryId: Thread["id"] | undefined;
+  activeEntryId: string | undefined;
   isExpanded: boolean;
   previewLimit: number;
 }): {
@@ -399,8 +399,8 @@ export function getVisibleSidebarEntriesForPreview<
   visibleEntries: T[];
 } {
   const { activeEntryId, entries, isExpanded, previewLimit } = input;
-  const orderedRootRowIds: Thread["id"][] = [];
-  const seenRootRowIds = new Set<Thread["id"]>();
+  const orderedRootRowIds: string[] = [];
+  const seenRootRowIds = new Set<string>();
 
   for (const entry of entries) {
     if (seenRootRowIds.has(entry.rootRowId)) {

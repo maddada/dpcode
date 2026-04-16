@@ -331,6 +331,7 @@ type SidebarProjectEntry =
   | {
       kind: "editor";
       rowId: string;
+      rootRowId: string;
       projectId: ProjectId;
     }
   | {
@@ -653,6 +654,39 @@ function SortableProjectItem({
     >
       {children({ attributes, listeners, setActivatorNodeRef })}
     </li>
+  );
+}
+
+function SidebarSegmentedPicker({
+  activeView,
+  onSelectView,
+}: {
+  activeView: "threads" | "workspace";
+  onSelectView: (view: "threads" | "workspace") => void;
+}) {
+  return (
+    <div className="px-3 pb-2.5">
+      <div className="inline-flex w-full rounded-md bg-muted/40 p-0.5">
+        {(["threads", "workspace"] as const).map((view) => {
+          const active = activeView === view;
+          return (
+            <button
+              key={view}
+              type="button"
+              className={cn(
+                "flex-1 rounded-sm px-2.5 py-1 text-[11.5px] font-medium tracking-tight transition-colors",
+                active
+                  ? "bg-background text-foreground shadow-xs dark:bg-neutral-800"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => onSelectView(view)}
+            >
+              {view === "threads" ? "Threads" : "Workspace"}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1176,27 +1210,6 @@ export default function Sidebar() {
     [openExistingProjectFromSnapshot, syncServerReadModel, waitForProjectWorkspaceRootInSnapshot],
   );
 
-  const navigateBackFromSettings = useCallback(() => {
-    if (activeSidebarThreadId) {
-      activateThread(activeSidebarThreadId);
-      return;
-    }
-
-    const latestThread = sortThreadsForSidebar(threads, appSettings.sidebarThreadSortOrder)[0];
-    if (latestThread) {
-      activateThread(latestThread.id);
-      return;
-    }
-
-    void navigate({ to: "/", replace: true });
-  }, [
-    activateThread,
-    activeSidebarThreadId,
-    appSettings.sidebarThreadSortOrder,
-    navigate,
-    threads,
-  ]);
-
   const handleOpenProjectFromSearch = useCallback(
     (projectId: string) => {
       const typedProjectId = ProjectId.makeUnsafe(projectId);
@@ -1251,6 +1264,21 @@ export default function Sidebar() {
       });
     },
     [navigate],
+  );
+
+  const handleSidebarViewChange = useCallback(
+    (view: "threads" | "workspace") => {
+      if (view === "workspace") {
+        const fallbackWorkspaceId = workspacePages[0]?.id;
+        if (!fallbackWorkspaceId) {
+          return;
+        }
+        navigateToWorkspace(routeWorkspaceId ?? fallbackWorkspaceId);
+        return;
+      }
+      void navigate({ to: "/" });
+    },
+    [navigate, navigateToWorkspace, routeWorkspaceId, workspacePages],
   );
 
   const handleCreateWorkspace = useCallback(() => {
@@ -2139,6 +2167,27 @@ export default function Sidebar() {
       terminalStateByThreadId,
     ],
   );
+
+  const navigateBackFromSettings = useCallback(() => {
+    if (activeSidebarThreadId) {
+      activateThread(activeSidebarThreadId);
+      return;
+    }
+
+    const latestThread = sortThreadsForSidebar(threads, appSettings.sidebarThreadSortOrder)[0];
+    if (latestThread) {
+      activateThread(latestThread.id);
+      return;
+    }
+
+    void navigate({ to: "/", replace: true });
+  }, [
+    activateThread,
+    activeSidebarThreadId,
+    appSettings.sidebarThreadSortOrder,
+    navigate,
+    threads,
+  ]);
 
   const handleProjectContextMenu = useCallback(
     async (projectId: ProjectId, position: { x: number; y: number }) => {
@@ -3175,6 +3224,7 @@ export default function Sidebar() {
       orderedEntries.unshift({
         kind: "editor",
         rowId: `editor:${project.id}`,
+        rootRowId: `editor:${project.id}`,
         projectId: project.id,
       });
     }
