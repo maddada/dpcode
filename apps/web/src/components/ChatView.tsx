@@ -40,6 +40,7 @@ import {
   GENERIC_CHAT_THREAD_TITLE,
 } from "@t3tools/shared/chatThreads";
 import {
+  isPendingThreadWorktree,
   resolveThreadWorkspaceState,
   resolveThreadBranchSourceCwd,
   resolveThreadWorkspaceCwd as resolveSharedThreadWorkspaceCwd,
@@ -1073,6 +1074,13 @@ export default function ChatView({
   const resolvedThreadWorktreePath = isServerThread
     ? (activeThread?.worktreePath ?? null)
     : (draftThread?.worktreePath ?? null);
+  const diffEnvironmentPending = isPendingThreadWorktree({
+    envMode: resolvedThreadEnvMode,
+    worktreePath: resolvedThreadWorktreePath,
+  });
+  const diffDisabledReason = diffEnvironmentPending
+    ? "Diff and summary will be available once the worktree is ready for this chat."
+    : null;
   const activeThreadAssociatedWorktree = useMemo(
     () =>
       deriveAssociatedWorktreeMetadata({
@@ -2068,6 +2076,9 @@ export default function ChatView({
     [keybindings],
   );
   const onToggleDiff = useCallback(() => {
+    if (diffEnvironmentPending && !diffOpen) {
+      return;
+    }
     if (onToggleDiffPanel) {
       onToggleDiffPanel();
       return;
@@ -2083,7 +2094,7 @@ export default function ChatView({
           : { ...rest, panel: "diff", diff: "1" };
       },
     });
-  }, [diffOpen, navigate, onToggleDiffPanel, threadId]);
+  }, [diffEnvironmentPending, diffOpen, navigate, onToggleDiffPanel, threadId]);
   const onToggleBrowser = useCallback(() => {
     if (onToggleBrowserPanel) {
       onToggleBrowserPanel();
@@ -5625,6 +5636,9 @@ export default function ChatView({
   }, [forceStickToBottom]);
   const onOpenTurnDiff = useCallback(
     (turnId: TurnId, filePath?: string) => {
+      if (diffEnvironmentPending) {
+        return;
+      }
       if (onOpenTurnDiffPanel) {
         onOpenTurnDiffPanel(turnId, filePath);
         return;
@@ -5640,7 +5654,7 @@ export default function ChatView({
         },
       });
     },
-    [navigate, onOpenTurnDiffPanel, threadId],
+    [diffEnvironmentPending, navigate, onOpenTurnDiffPanel, threadId],
   );
   const onNavigateToThread = useCallback(
     (nextThreadId: ThreadId) => {
@@ -5751,6 +5765,7 @@ export default function ChatView({
           browserOpen={resolvedBrowserOpen}
           gitCwd={threadWorkspaceCwd}
           diffOpen={resolvedDiffOpen}
+          diffDisabledReason={diffDisabledReason}
           surfaceMode={surfaceMode}
           chatLayoutAction={
             surfaceMode === "single" && onSplitSurface
