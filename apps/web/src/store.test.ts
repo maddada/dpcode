@@ -470,6 +470,30 @@ describe("store pure functions", () => {
     });
   });
 
+  it("updates thread titles immediately from live thread.meta-updated events", () => {
+    const initialState = syncServerReadModel(
+      makeState(makeThread()),
+      makeReadModel(makeReadModelThread({ title: "New thread" })),
+    );
+
+    const next = applyOrchestrationEvents(initialState, [
+      makeDomainEvent("thread.meta-updated", {
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        title: "Polish loading states",
+        updatedAt: "2026-02-27T00:06:00.000Z",
+      }),
+    ]);
+
+    expect(next.threads[0]).toMatchObject({
+      title: "Polish loading states",
+      updatedAt: "2026-02-27T00:06:00.000Z",
+    });
+    expect(next.sidebarThreadSummaryById["thread-1"]).toMatchObject({
+      title: "Polish loading states",
+      updatedAt: "2026-02-27T00:06:00.000Z",
+    });
+  });
+
   it("removes projects immediately from live project.deleted events", () => {
     const next = applyOrchestrationEvents(
       {

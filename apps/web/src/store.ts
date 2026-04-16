@@ -1466,6 +1466,93 @@ function applyOrchestrationEvent(state: AppState, event: OrchestrationEvent): Ap
       };
     }
 
+    case "thread.meta-updated":
+      return applyThreadUpdate(state, event.payload.threadId, (thread) => {
+        const modelSelection =
+          event.payload.modelSelection !== undefined
+            ? normalizeModelSelection(event.payload.modelSelection, thread.modelSelection)
+            : thread.modelSelection;
+        const branch =
+          event.payload.branch !== undefined
+            ? resolveThreadBranchRegressionGuard({
+                currentBranch: thread.branch,
+                nextBranch: event.payload.branch,
+              })
+            : thread.branch;
+        const handoff =
+          event.payload.handoff !== undefined
+            ? thread.handoff &&
+              event.payload.handoff &&
+              deepEqualJson(thread.handoff, event.payload.handoff)
+              ? thread.handoff
+              : event.payload.handoff
+            : thread.handoff;
+        const updatedAt =
+          (thread.updatedAt ?? thread.createdAt) > event.payload.updatedAt
+            ? thread.updatedAt
+            : event.payload.updatedAt;
+
+        if (
+          (event.payload.title ?? thread.title) === thread.title &&
+          modelSelection === thread.modelSelection &&
+          (event.payload.envMode ?? thread.envMode) === thread.envMode &&
+          branch === thread.branch &&
+          (event.payload.worktreePath ?? thread.worktreePath) === thread.worktreePath &&
+          (event.payload.associatedWorktreePath ?? thread.associatedWorktreePath ?? null) ===
+            (thread.associatedWorktreePath ?? null) &&
+          (event.payload.associatedWorktreeBranch ?? thread.associatedWorktreeBranch ?? null) ===
+            (thread.associatedWorktreeBranch ?? null) &&
+          (event.payload.associatedWorktreeRef ?? thread.associatedWorktreeRef ?? null) ===
+            (thread.associatedWorktreeRef ?? null) &&
+          (event.payload.parentThreadId ?? thread.parentThreadId ?? null) ===
+            (thread.parentThreadId ?? null) &&
+          (event.payload.subagentAgentId ?? thread.subagentAgentId ?? null) ===
+            (thread.subagentAgentId ?? null) &&
+          (event.payload.subagentNickname ?? thread.subagentNickname ?? null) ===
+            (thread.subagentNickname ?? null) &&
+          (event.payload.subagentRole ?? thread.subagentRole ?? null) ===
+            (thread.subagentRole ?? null) &&
+          handoff === (thread.handoff ?? null) &&
+          updatedAt === thread.updatedAt
+        ) {
+          return thread;
+        }
+
+        return {
+          ...thread,
+          ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
+          ...(event.payload.modelSelection !== undefined ? { modelSelection } : {}),
+          ...(event.payload.envMode !== undefined ? { envMode: event.payload.envMode } : {}),
+          ...(event.payload.branch !== undefined ? { branch } : {}),
+          ...(event.payload.worktreePath !== undefined
+            ? { worktreePath: event.payload.worktreePath }
+            : {}),
+          ...(event.payload.associatedWorktreePath !== undefined
+            ? { associatedWorktreePath: event.payload.associatedWorktreePath }
+            : {}),
+          ...(event.payload.associatedWorktreeBranch !== undefined
+            ? { associatedWorktreeBranch: event.payload.associatedWorktreeBranch }
+            : {}),
+          ...(event.payload.associatedWorktreeRef !== undefined
+            ? { associatedWorktreeRef: event.payload.associatedWorktreeRef }
+            : {}),
+          ...(event.payload.parentThreadId !== undefined
+            ? { parentThreadId: event.payload.parentThreadId }
+            : {}),
+          ...(event.payload.subagentAgentId !== undefined
+            ? { subagentAgentId: event.payload.subagentAgentId }
+            : {}),
+          ...(event.payload.subagentNickname !== undefined
+            ? { subagentNickname: event.payload.subagentNickname }
+            : {}),
+          ...(event.payload.subagentRole !== undefined
+            ? { subagentRole: event.payload.subagentRole }
+            : {}),
+          ...(event.payload.handoff !== undefined ? { handoff } : {}),
+          updatedAt,
+        };
+      });
+
     case "thread.message-sent":
       return applyThreadUpdate(state, event.payload.threadId, (thread) =>
         applyThreadMessageSentEvent(thread, event),
