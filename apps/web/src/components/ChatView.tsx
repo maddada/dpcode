@@ -265,7 +265,11 @@ import {
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerSlashCommands } from "../hooks/useComposerSlashCommands";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
-import { VSMUX_FOCUS_COMPOSER_EVENT } from "../vsmuxEmbed";
+import {
+  VSMUX_FOCUS_COMPOSER_EVENT,
+  VSMUX_PASTE_PAYLOAD_EVENT,
+  type VSmuxPastePayload,
+} from "../vsmuxEmbed";
 import { useProjectEditorActions } from "../hooks/useProjectEditorActions";
 import {
   canCreateThreadHandoff,
@@ -4070,6 +4074,45 @@ export default function ChatView({
     });
     addComposerImages(imageFiles);
   };
+
+  const addComposerImagesRef = useRef(addComposerImages);
+  addComposerImagesRef.current = addComposerImages;
+
+  useEffect(() => {
+    const handleVsmuxPastePayload = (event: Event) => {
+      const pasteEvent = event as CustomEvent<VSmuxPastePayload>;
+      const payload = pasteEvent.detail;
+      logVsmuxPasteTrace("app.vsmuxPastePayload.received", {
+        files: summarizePasteTraceFiles(payload.files),
+        looksLikeFilePath: looksLikePasteTraceFilesystemPath(payload.text),
+        ...summarizePasteTraceText(payload.text),
+      });
+      if (payload.files.length === 0) {
+        logVsmuxPasteTrace("app.vsmuxPastePayload.noFiles", {
+          looksLikeFilePath: looksLikePasteTraceFilesystemPath(payload.text),
+          ...summarizePasteTraceText(payload.text),
+        });
+        return;
+      }
+
+      const files = payload.files.map(
+        (file) =>
+          new File([file.buffer], file.name || "clipboard-image", {
+            type: file.type || "application/octet-stream",
+          }),
+      );
+      logVsmuxPasteTrace("app.vsmuxPastePayload.reconstructedFiles", {
+        files: summarizePasteTraceFiles(files),
+      });
+      addComposerImagesRef.current(files);
+      focusComposer();
+    };
+
+    window.addEventListener(VSMUX_PASTE_PAYLOAD_EVENT, handleVsmuxPastePayload);
+    return () => {
+      window.removeEventListener(VSMUX_PASTE_PAYLOAD_EVENT, handleVsmuxPastePayload);
+    };
+  }, [focusComposer]);
 
   const onComposerDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) {

@@ -8,8 +8,21 @@ export type VSmuxEmbedBootstrap = {
 };
 
 export const VSMUX_FOCUS_COMPOSER_EVENT = "vsmux:focus-composer";
+export const VSMUX_PASTE_PAYLOAD_EVENT = "vsmux:paste-payload";
 const VSMUX_PASTE_TRACE_TAG = "[VSMUX_PASTE_TRACE]";
 const MAX_PASTE_TRACE_TEXT_LENGTH = 180;
+
+export type VSmuxPastePayloadFile = {
+  buffer: ArrayBuffer;
+  name: string;
+  type: string;
+};
+
+export type VSmuxPastePayload = {
+  files: VSmuxPastePayloadFile[];
+  text: string;
+  type: "vsmuxPastePayload";
+};
 
 declare global {
   interface Window {
@@ -88,6 +101,11 @@ export function installVSmuxEmbedBridge(): void {
         looksLikeFilePath: looksLikePasteTraceFilesystemPath(event.data.text),
         ...summarizePasteTraceText(event.data.text),
       });
+      window.dispatchEvent(
+        new CustomEvent<VSmuxPastePayload>(VSMUX_PASTE_PAYLOAD_EVENT, {
+          detail: event.data,
+        }),
+      );
       return;
     }
 
@@ -139,11 +157,7 @@ function isHostFocusComposerMessage(message: unknown): message is { type: "focus
   );
 }
 
-function isVsmuxPastePayloadMessage(message: unknown): message is {
-  files: Array<{ name?: string; size?: number; type?: string }>;
-  text: string;
-  type: "vsmuxPastePayload";
-} {
+function isVsmuxPastePayloadMessage(message: unknown): message is VSmuxPastePayload {
   return (
     typeof message === "object" &&
     message !== null &&
@@ -152,7 +166,18 @@ function isVsmuxPastePayloadMessage(message: unknown): message is {
     "text" in message &&
     typeof message.text === "string" &&
     "files" in message &&
-    Array.isArray(message.files)
+    Array.isArray(message.files) &&
+    message.files.every(
+      (file) =>
+        file != null &&
+        typeof file === "object" &&
+        "buffer" in file &&
+        file.buffer instanceof ArrayBuffer &&
+        "name" in file &&
+        typeof file.name === "string" &&
+        "type" in file &&
+        typeof file.type === "string",
+    )
   );
 }
 

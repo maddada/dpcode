@@ -85,14 +85,51 @@ const SINGLE_PANEL_MIN_WIDTH = 26 * 16;
 const COMPOSER_COMPACT_MIN_LEFT_CONTROLS_WIDTH_PX = 208;
 const RIGHT_PANEL_SIDEBAR_WIDTH_STORAGE_KEY = "chat_right_panel_width";
 
+function stripDiffPanelHashSearchFromLocation() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const currentHash = window.location.hash;
+  const normalizedHash = currentHash.startsWith("#") ? currentHash.slice(1) : currentHash;
+  const [hashPath, rawSearch = ""] = normalizedHash.split("?");
+  if (!hashPath || rawSearch.length === 0) {
+    return false;
+  }
+
+  const params = new URLSearchParams(rawSearch);
+  const hadPanelSearch =
+    params.has("panel") ||
+    params.has("diff") ||
+    params.has("diffTurnId") ||
+    params.has("diffFilePath");
+  if (!hadPanelSearch) {
+    return false;
+  }
+
+  params.delete("panel");
+  params.delete("diff");
+  params.delete("diffTurnId");
+  params.delete("diffFilePath");
+
+  const nextHash = params.toString().length > 0 ? `${hashPath}?${params.toString()}` : hashPath;
+  if (nextHash === normalizedHash) {
+    return false;
+  }
+
+  window.location.hash = nextHash;
+  return true;
+}
+
 const RightPanelSheet = (props: {
   children: ReactNode;
   panelOpen: boolean;
   onClosePanel: () => void;
   showFloatingCloseButton?: boolean;
 }) => {
-  const handleFloatingCloseButtonClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleFloatingCloseButtonInteraction = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
       event.stopPropagation();
 
       const matchingCloseButton = Array.from(
@@ -122,17 +159,25 @@ const RightPanelSheet = (props: {
         <SheetBackdrop className="z-50" onClick={props.onClosePanel} />
         <SheetViewport side="right" className="z-[60]">
           <div className="pointer-events-auto relative flex-1">
+            {props.showFloatingCloseButton ? (
+              <button
+                type="button"
+                aria-label="Close floating diff panel"
+                className="absolute left-[5px] top-[5px] z-[100] inline-flex size-7 items-center justify-center rounded-full border border-border/70 bg-background/90 text-foreground shadow-sm backdrop-blur-sm"
+                onClick={handleFloatingCloseButtonInteraction}
+                onPointerDown={handleFloatingCloseButtonInteraction}
+              >
+                <XIcon className="size-3.5 shrink-0 opacity-80" />
+              </button>
+            ) : null}
             <button
               type="button"
               aria-label="Close side panel"
               className="absolute inset-0 z-[90] bg-transparent"
-              onClick={handleFloatingCloseButtonClick}
+              onClick={handleFloatingCloseButtonInteraction}
+              onPointerDown={handleFloatingCloseButtonInteraction}
             >
-              {props.showFloatingCloseButton ? (
-                <span className="pointer-events-none absolute left-[5px] top-[5px] inline-flex size-7 items-center justify-center rounded-full border border-border/70 bg-background/90 text-foreground shadow-sm backdrop-blur-sm">
-                  <XIcon className="size-3.5 shrink-0 opacity-80" />
-                </span>
-              ) : null}
+              {null}
             </button>
           </div>
           <SheetPopup
@@ -1086,6 +1131,9 @@ function SingleChatSurface(props: {
   );
   const closePanel = useCallback(() => {
     updatePanelState({ panel: null });
+    window.setTimeout(() => {
+      void stripDiffPanelHashSearchFromLocation();
+    }, 0);
   }, [updatePanelState]);
   const openPanel = useCallback(() => {
     updatePanelState({ panel: lastOpenPanel });
