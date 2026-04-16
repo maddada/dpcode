@@ -8,6 +8,8 @@ export type VSmuxEmbedBootstrap = {
 };
 
 export const VSMUX_FOCUS_COMPOSER_EVENT = "vsmux:focus-composer";
+const VSMUX_PASTE_TRACE_TAG = "[VSMUX_PASTE_TRACE]";
+const MAX_PASTE_TRACE_TEXT_LENGTH = 180;
 
 declare global {
   interface Window {
@@ -69,7 +71,9 @@ export function getRememberedVSmuxReturnThreadId(): string | undefined {
   if (!bootstrap) {
     return undefined;
   }
-  return window.sessionStorage.getItem(getVSmuxReturnThreadStorageKey(bootstrap.sessionId)) ?? undefined;
+  return (
+    window.sessionStorage.getItem(getVSmuxReturnThreadStorageKey(bootstrap.sessionId)) ?? undefined
+  );
 }
 
 export function installVSmuxEmbedBridge(): void {
@@ -78,6 +82,15 @@ export function installVSmuxEmbedBridge(): void {
   }
 
   window.addEventListener("message", (event) => {
+    if (isVsmuxPastePayloadMessage(event.data)) {
+      logPasteTrace("embed.message.vsmuxPastePayload", {
+        files: summarizePasteTraceFiles(event.data.files),
+        looksLikeFilePath: looksLikePasteTraceFilesystemPath(event.data.text),
+        ...summarizePasteTraceText(event.data.text),
+      });
+      return;
+    }
+
     if (!isHostFocusComposerMessage(event.data)) {
       return;
     }
@@ -89,10 +102,7 @@ export function installVSmuxEmbedBridge(): void {
   vscodeApi?.postMessage({ type: "vsmuxReady" });
 }
 
-export function notifyVSmuxActiveThread(input: {
-  threadId: string;
-  title?: string | null;
-}): void {
+export function notifyVSmuxActiveThread(input: { threadId: string; title?: string | null }): void {
   if (typeof window === "undefined") {
     return;
   }
@@ -126,6 +136,64 @@ function isHostFocusComposerMessage(message: unknown): message is { type: "focus
     message !== null &&
     "type" in message &&
     message.type === "focusComposer"
+  );
+}
+
+function isVsmuxPastePayloadMessage(message: unknown): message is {
+  files: Array<{ name?: string; size?: number; type?: string }>;
+  text: string;
+  type: "vsmuxPastePayload";
+} {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "type" in message &&
+    message.type === "vsmuxPastePayload" &&
+    "text" in message &&
+    typeof message.text === "string" &&
+    "files" in message &&
+    Array.isArray(message.files)
+  );
+}
+
+function logPasteTrace(event: string, payload?: Record<string, unknown>) {
+  const timestamp = new Date().toISOString();
+  const serializedPayload = payload ? JSON.stringify(payload) : "{}";
+  console.info(`${VSMUX_PASTE_TRACE_TAG} ${timestamp} ${event} ${serializedPayload}`);
+}
+
+function summarizePasteTraceFiles(
+  files: ReadonlyArray<{ name?: string; size?: number; type?: string }>,
+): Array<Record<string, unknown>> {
+  return files.map((file) => ({
+    name: file.name ?? "",
+    size: typeof file.size === "number" ? file.size : undefined,
+    type: file.type ?? "",
+  }));
+}
+
+function summarizePasteTraceText(text: string): { textLength: number; textSnippet?: string } {
+  const trimmedText = text.trim();
+  return trimmedText
+    ? {
+        textLength: text.length,
+        textSnippet: trimmedText.slice(0, MAX_PASTE_TRACE_TEXT_LENGTH),
+      }
+    : {
+        textLength: text.length,
+      };
+}
+
+function looksLikePasteTraceFilesystemPath(text: string): boolean {
+  const trimmedText = text.trim();
+  if (!trimmedText) {
+    return false;
+  }
+
+  return (
+    trimmedText.startsWith("/") ||
+    trimmedText.startsWith("file://") ||
+    /^[A-Za-z]:[\\/]/.test(trimmedText)
   );
 }
 

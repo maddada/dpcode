@@ -350,6 +350,50 @@ function warnVoiceGuard(event: string, details?: Record<string, unknown>) {
   console.warn(`[voice] ${event}`);
 }
 
+const VSMUX_PASTE_TRACE_TAG = "[VSMUX_PASTE_TRACE]";
+const MAX_PASTE_TRACE_TEXT_LENGTH = 180;
+
+function logVsmuxPasteTrace(event: string, payload?: Record<string, unknown>) {
+  const timestamp = new Date().toISOString();
+  const serializedPayload = payload ? JSON.stringify(payload) : "{}";
+  console.info(`${VSMUX_PASTE_TRACE_TAG} ${timestamp} ${event} ${serializedPayload}`);
+}
+
+function summarizePasteTraceFiles(
+  files: ReadonlyArray<{ name?: string; size?: number; type?: string }>,
+): Array<Record<string, unknown>> {
+  return files.map((file) => ({
+    name: file.name ?? "",
+    size: typeof file.size === "number" ? file.size : undefined,
+    type: file.type ?? "",
+  }));
+}
+
+function summarizePasteTraceText(text: string): { textLength: number; textSnippet?: string } {
+  const trimmedText = text.trim();
+  return trimmedText
+    ? {
+        textLength: text.length,
+        textSnippet: trimmedText.slice(0, MAX_PASTE_TRACE_TEXT_LENGTH),
+      }
+    : {
+        textLength: text.length,
+      };
+}
+
+function looksLikePasteTraceFilesystemPath(text: string): boolean {
+  const trimmedText = text.trim();
+  if (!trimmedText) {
+    return false;
+  }
+
+  return (
+    trimmedText.startsWith("/") ||
+    trimmedText.startsWith("file://") ||
+    /^[A-Za-z]:[\\/]/.test(trimmedText)
+  );
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -1963,6 +2007,8 @@ export default function ChatView({
     voiceProviderStatus?.authStatus !== "unauthenticated" &&
     voiceProviderStatus?.voiceTranscriptionAvailable !== false;
   const showVoiceNotesControl = canRenderVoiceNotes || isVoiceRecording || isVoiceTranscribing;
+  // Keep the voice-note flow wired up, but hide the composer mic affordance from the UI.
+  const showComposerVoiceButton = false;
   const activeProjectCwd = activeProject?.cwd ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const hasNativeUserMessages = useMemo(
@@ -3773,9 +3819,23 @@ export default function ChatView({
 
   // --- Composer attachment entry points -------------------------------------
   const addComposerImages = (files: File[]) => {
-    if (!activeThreadId || files.length === 0) return;
+    logVsmuxPasteTrace("app.addComposerImages.start", {
+      currentImageCount: composerImagesRef.current.length,
+      files: summarizePasteTraceFiles(files),
+    });
+
+    if (!activeThreadId || files.length === 0) {
+      logVsmuxPasteTrace("app.addComposerImages.aborted", {
+        files: summarizePasteTraceFiles(files),
+        hasActiveThread: Boolean(activeThreadId),
+      });
+      return;
+    }
 
     if (pendingUserInputs.length > 0) {
+      logVsmuxPasteTrace("app.addComposerImages.aborted.pendingUserInputs", {
+        files: summarizePasteTraceFiles(files),
+      });
       toastManager.add({
         type: "error",
         title: "Attach images after answering plan questions.",
@@ -3789,18 +3849,35 @@ export default function ChatView({
     for (const file of files) {
       if (!file.type.startsWith("image/")) {
         error = `Unsupported file type for '${file.name}'. Please attach image files only.`;
+        logVsmuxPasteTrace("app.addComposerImages.rejected.nonImage", {
+          error,
+          file: summarizePasteTraceFiles([file])[0],
+        });
         continue;
       }
       if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
         error = `'${file.name}' exceeds the ${IMAGE_SIZE_LIMIT_LABEL} attachment limit.`;
+        logVsmuxPasteTrace("app.addComposerImages.rejected.tooLarge", {
+          error,
+          file: summarizePasteTraceFiles([file])[0],
+        });
         continue;
       }
       if (nextImageCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
         error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`;
+        logVsmuxPasteTrace("app.addComposerImages.rejected.tooMany", {
+          error,
+          file: summarizePasteTraceFiles([file])[0],
+          nextImageCount,
+        });
         break;
       }
 
       const previewUrl = URL.createObjectURL(file);
+      logVsmuxPasteTrace("app.addComposerImages.accepted", {
+        file: summarizePasteTraceFiles([file])[0],
+        previewUrl,
+      });
       nextImages.push({
         type: "image",
         id: randomUUID(),
@@ -3814,9 +3891,22 @@ export default function ChatView({
     }
 
     if (nextImages.length === 1 && nextImages[0]) {
+      logVsmuxPasteTrace("app.addComposerImages.commit.single", {
+        acceptedCount: nextImages.length,
+        error,
+      });
       addComposerImage(nextImages[0]);
     } else if (nextImages.length > 1) {
+      logVsmuxPasteTrace("app.addComposerImages.commit.multiple", {
+        acceptedCount: nextImages.length,
+        error,
+      });
       addComposerImagesToDraft(nextImages);
+    } else {
+      logVsmuxPasteTrace("app.addComposerImages.commit.none", {
+        acceptedCount: 0,
+        error,
+      });
     }
     setThreadError(activeThreadId, error);
   };
@@ -3826,15 +3916,36 @@ export default function ChatView({
   };
 
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
+    const pastedText = event.clipboardData.getData("text/plain");
     const files = Array.from(event.clipboardData.files);
+    logVsmuxPasteTrace("app.onComposerPaste", {
+      files: summarizePasteTraceFiles(files),
+      itemKinds: Array.from(event.clipboardData.items).map((item) => ({
+        kind: item.kind,
+        type: item.type,
+      })),
+      looksLikeFilePath: looksLikePasteTraceFilesystemPath(pastedText),
+      ...summarizePasteTraceText(pastedText),
+      types: Array.from(event.clipboardData.types),
+    });
     if (files.length === 0) {
+      logVsmuxPasteTrace("app.onComposerPaste.noFiles", {
+        looksLikeFilePath: looksLikePasteTraceFilesystemPath(pastedText),
+        ...summarizePasteTraceText(pastedText),
+      });
       return;
     }
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
     if (imageFiles.length === 0) {
+      logVsmuxPasteTrace("app.onComposerPaste.noImageFiles", {
+        files: summarizePasteTraceFiles(files),
+      });
       return;
     }
     event.preventDefault();
+    logVsmuxPasteTrace("app.onComposerPaste.preventDefaultForImages", {
+      imageFiles: summarizePasteTraceFiles(imageFiles),
+    });
     addComposerImages(imageFiles);
   };
 
@@ -6159,7 +6270,7 @@ export default function ChatView({
                               )
                             ) : (
                               <>
-                                {showVoiceNotesControl ? (
+                                {showComposerVoiceButton && showVoiceNotesControl ? (
                                   <ComposerVoiceButton
                                     disabled={isComposerApprovalState || isConnecting || isSendBusy}
                                     isRecording={isVoiceRecording}
