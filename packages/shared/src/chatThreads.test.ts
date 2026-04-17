@@ -24,6 +24,7 @@ describe("chatThreads", () => {
 
   it("detects the generic chat placeholder title", () => {
     expect(isGenericChatThreadTitle(" New thread ")).toBe(true);
+    expect(isGenericChatThreadTitle(" T3 Code ")).toBe(true);
     expect(isGenericChatThreadTitle("Manual rename")).toBe(false);
   });
 });

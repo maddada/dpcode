@@ -381,6 +381,51 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
+  it("renames a legacy placeholder first-turn thread title using text generation", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+    harness.generateThreadTitle.mockImplementation(() =>
+      Effect.succeed({
+        title: "Summarize deployment issue",
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.makeUnsafe("cmd-thread-title-legacy-placeholder"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        title: "T3 Code",
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-title-legacy-placeholder"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-title-legacy-placeholder"),
+          role: "user",
+          text: "Summarize the deployment issue blocking the staging rollout",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.generateThreadTitle.mock.calls.length === 1);
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      return (
+        readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"))?.title ===
+        "Summarize deployment issue"
+      );
+    });
+  });
+
   it("queues a follow-up turn while the current turn is still running", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();

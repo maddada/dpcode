@@ -4,6 +4,10 @@
 // Exports: generic title checks plus fallback/generated title sanitizers
 
 export const GENERIC_CHAT_THREAD_TITLE = "New thread";
+const LEGACY_GENERIC_CHAT_THREAD_TITLES = new Set([
+  GENERIC_CHAT_THREAD_TITLE,
+  "T3 Code",
+]);
 const MAX_CHAT_THREAD_TITLE_LENGTH = 50;
 const MAX_CHAT_THREAD_TITLE_WORDS = 4;
 
@@ -53,5 +57,5 @@ export function sanitizeGeneratedThreadTitle(raw: string): string {
 }
 
 export function isGenericChatThreadTitle(title: string | null | undefined): boolean {
-  return normalizeTitleWhitespace(title ?? "") === GENERIC_CHAT_THREAD_TITLE;
+  return LEGACY_GENERIC_CHAT_THREAD_TITLES.has(normalizeTitleWhitespace(title ?? ""));
 }

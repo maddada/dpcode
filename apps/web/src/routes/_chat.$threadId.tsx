@@ -117,8 +117,34 @@ function stripDiffPanelHashSearchFromLocation() {
     return false;
   }
 
-  window.location.hash = nextHash;
+  window.history.replaceState(window.history.state, "", `${window.location.pathname}#${nextHash}`);
   return true;
+}
+
+function resolveClosedPanelHashHref() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const currentHash = window.location.hash;
+  const normalizedHash = currentHash.startsWith("#") ? currentHash.slice(1) : currentHash;
+  const [hashPath, rawSearch = ""] = normalizedHash.split("?");
+  if (!hashPath || rawSearch.length === 0) {
+    return null;
+  }
+
+  const params = new URLSearchParams(rawSearch);
+  params.delete("panel");
+  params.delete("diff");
+  params.delete("diffTurnId");
+  params.delete("diffFilePath");
+
+  const nextHash = params.toString().length > 0 ? `${hashPath}?${params.toString()}` : hashPath;
+  if (nextHash === normalizedHash) {
+    return null;
+  }
+
+  return `#${nextHash}`;
 }
 
 const RightPanelSheet = (props: {
@@ -127,17 +153,13 @@ const RightPanelSheet = (props: {
   onClosePanel: () => void;
   showFloatingCloseButton?: boolean;
 }) => {
+  const closePanelHref = resolveClosedPanelHashHref();
   const handleFloatingCloseButtonInteraction = useCallback(
     (event: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
       event.stopPropagation();
 
-      const matchingCloseButton = Array.from(
-        document.querySelectorAll<HTMLButtonElement>('[aria-label="Close diff panel"]'),
-      ).find((button) => button !== event.currentTarget);
-
-      if (matchingCloseButton) {
-        matchingCloseButton.click();
+      if (stripDiffPanelHashSearchFromLocation()) {
         return;
       }
 
@@ -159,26 +181,45 @@ const RightPanelSheet = (props: {
         <SheetBackdrop className="z-50" onClick={props.onClosePanel} />
         <SheetViewport side="right" className="z-[60]">
           <div className="pointer-events-auto relative flex-1">
-            {props.showFloatingCloseButton ? (
-              <button
-                type="button"
-                aria-label="Close floating diff panel"
-                className="absolute left-[5px] top-[5px] z-[100] inline-flex size-7 items-center justify-center rounded-full border border-border/70 bg-background/90 text-foreground shadow-sm backdrop-blur-sm"
-                onClick={handleFloatingCloseButtonInteraction}
-                onPointerDown={handleFloatingCloseButtonInteraction}
-              >
-                <XIcon className="size-3.5 shrink-0 opacity-80" />
-              </button>
-            ) : null}
-            <button
-              type="button"
-              aria-label="Close side panel"
-              className="absolute inset-0 z-[90] bg-transparent"
-              onClick={handleFloatingCloseButtonInteraction}
-              onPointerDown={handleFloatingCloseButtonInteraction}
-            >
-              {null}
-            </button>
+            {closePanelHref ? (
+              <>
+                {props.showFloatingCloseButton ? (
+                  <a
+                    aria-label="Close floating diff panel"
+                    className="absolute left-[5px] top-[5px] z-[100] inline-flex size-7 items-center justify-center rounded-full border border-border/70 bg-background/90 text-foreground shadow-sm backdrop-blur-sm"
+                    href={closePanelHref}
+                  >
+                    <XIcon className="size-3.5 shrink-0 opacity-80" />
+                  </a>
+                ) : null}
+                <a
+                  aria-label="Close side panel"
+                  className="absolute inset-0 z-[90] bg-transparent"
+                  href={closePanelHref}
+                />
+              </>
+            ) : (
+              <>
+                {props.showFloatingCloseButton ? (
+                  <button
+                    type="button"
+                    aria-label="Close floating diff panel"
+                    className="absolute left-[5px] top-[5px] z-[100] inline-flex size-7 items-center justify-center rounded-full border border-border/70 bg-background/90 text-foreground shadow-sm backdrop-blur-sm"
+                    onClick={handleFloatingCloseButtonInteraction}
+                    onPointerDown={handleFloatingCloseButtonInteraction}
+                  >
+                    <XIcon className="size-3.5 shrink-0 opacity-80" />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label="Close side panel"
+                  className="absolute inset-0 z-[90] bg-transparent"
+                  onClick={handleFloatingCloseButtonInteraction}
+                  onPointerDown={handleFloatingCloseButtonInteraction}
+                />
+              </>
+            )}
           </div>
           <SheetPopup
             side="right"
