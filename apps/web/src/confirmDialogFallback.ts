@@ -12,12 +12,12 @@ export function showConfirmDialogFallback(message: string): Promise<boolean> {
 
     // Backdrop
     const backdrop = document.createElement("div");
-    backdrop.className = "fixed inset-0 z-50 bg-black/50";
+    backdrop.className = "fixed inset-0 z-[70] bg-black/50";
     backdrop.style.cssText = "animation:fadeIn .15s ease-out";
 
     // Viewport (centers the dialog)
     const viewport = document.createElement("div");
-    viewport.className = "fixed inset-0 z-50 flex items-center justify-center p-4";
+    viewport.className = "fixed inset-0 z-[70] flex items-center justify-center p-4";
 
     // Popup
     const popup = document.createElement("div");

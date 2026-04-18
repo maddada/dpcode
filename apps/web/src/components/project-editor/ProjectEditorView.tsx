@@ -388,7 +388,7 @@ export function ProjectEditorView({ projectId }: { projectId: ProjectId }) {
   }
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none rounded-none bg-[#151515] text-foreground">
+    <SidebarInset className="app-shell-height min-h-0 overflow-hidden overscroll-y-none rounded-none bg-[#151515] text-foreground">
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <header className="border-b border-border px-3 py-2 sm:px-5 sm:py-3">

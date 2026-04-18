@@ -45,6 +45,42 @@ export const Route = createRootRouteWithContext<{
 });
 
 function RootRouteView() {
+  useEffect(() => {
+    const rootStyle = document.documentElement.style;
+    let frameId = 0;
+
+    const syncViewportHeight = () => {
+      frameId = 0;
+      const nextHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+      if (Number.isFinite(nextHeight) && nextHeight > 0) {
+        rootStyle.setProperty("--app-viewport-height", `${nextHeight}px`);
+      }
+    };
+
+    const scheduleSyncViewportHeight = () => {
+      if (frameId !== 0) {
+        return;
+      }
+      frameId = window.requestAnimationFrame(syncViewportHeight);
+    };
+
+    scheduleSyncViewportHeight();
+    window.addEventListener("resize", scheduleSyncViewportHeight);
+    window.addEventListener("orientationchange", scheduleSyncViewportHeight);
+    window.visualViewport?.addEventListener("resize", scheduleSyncViewportHeight);
+    window.visualViewport?.addEventListener("scroll", scheduleSyncViewportHeight);
+
+    return () => {
+      if (frameId !== 0) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.removeEventListener("resize", scheduleSyncViewportHeight);
+      window.removeEventListener("orientationchange", scheduleSyncViewportHeight);
+      window.visualViewport?.removeEventListener("resize", scheduleSyncViewportHeight);
+      window.visualViewport?.removeEventListener("scroll", scheduleSyncViewportHeight);
+    };
+  }, []);
+
   if (!readNativeApi()) {
     return (
       <div className="flex h-screen flex-col bg-background text-foreground">

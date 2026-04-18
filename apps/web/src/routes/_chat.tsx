@@ -261,7 +261,7 @@ function ChatRouteLayout() {
     <SidebarProvider defaultOpen={!isVSmuxEmbed()}>
       <ChatRouteGlobalShortcuts />
       {side === "left" ? sidebarElement : null}
-      <div className="relative min-h-dvh min-w-0 flex-1 overflow-hidden">
+      <div className="app-shell-min-height relative min-w-0 flex-1 overflow-hidden">
         <div
           className={cn(
             "h-full min-h-0 min-w-0 overflow-hidden",

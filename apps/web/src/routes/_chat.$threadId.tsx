@@ -121,12 +121,11 @@ function stripDiffPanelHashSearchFromLocation() {
   return true;
 }
 
-function resolveClosedPanelHashHref() {
-  if (typeof window === "undefined") {
+function resolveClosedPanelHashHref(currentHash: string) {
+  if (currentHash.length === 0) {
     return null;
   }
 
-  const currentHash = window.location.hash;
   const normalizedHash = currentHash.startsWith("#") ? currentHash.slice(1) : currentHash;
   const [hashPath, rawSearch = ""] = normalizedHash.split("?");
   if (!hashPath || rawSearch.length === 0) {
@@ -153,7 +152,8 @@ const RightPanelSheet = (props: {
   onClosePanel: () => void;
   showFloatingCloseButton?: boolean;
 }) => {
-  const closePanelHref = resolveClosedPanelHashHref();
+  const currentHash = typeof window === "undefined" ? "" : window.location.hash;
+  const closePanelHref = resolveClosedPanelHashHref(currentHash);
   const handleFloatingCloseButtonInteraction = useCallback(
     (event: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
@@ -995,7 +995,7 @@ function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadId: Thre
     <>
       <div
         ref={rootRef}
-        className="flex h-dvh min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+        className="app-shell-height flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
       >
         <div
           className="flex min-h-0 min-w-0"
@@ -1234,8 +1234,8 @@ function SingleChatSurface(props: {
 
   if (!shouldUseDiffSheet) {
     return (
-      <div className="flex h-dvh min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
-        <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+      <div className="app-shell-height flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
+        <SidebarInset className="app-shell-height min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
           <ChatView
             key={props.threadId}
             threadId={props.threadId}
@@ -1288,7 +1288,7 @@ function SingleChatSurface(props: {
 
   return (
     <>
-      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+      <SidebarInset className="app-shell-height min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
         <ChatView
           key={props.threadId}
           threadId={props.threadId}

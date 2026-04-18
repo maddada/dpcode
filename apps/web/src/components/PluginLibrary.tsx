@@ -504,7 +504,7 @@ export function PluginLibrary() {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden bg-background isolate">
+    <SidebarInset className="app-shell-height min-h-0 overflow-hidden bg-background isolate">
       <div className="flex h-full flex-col">
         {/* ── Top nav ───────────────────────────────────────────────────── */}
         <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 sm:px-6">
